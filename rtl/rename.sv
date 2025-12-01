@@ -15,7 +15,7 @@ module Rename #(
   input  logic                      dec_rs1_used_i,
   input  logic                      dec_rs2_used_i,
   input  logic                      dec_rd_used_i,
-  input  logic                      dec_is_branch_i,   /
+  input  logic                      dec_is_branch_i,   
 
   // for dispatch stage 
   output logic                      ren_valid_o,
