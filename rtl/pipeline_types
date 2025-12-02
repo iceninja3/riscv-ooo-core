@@ -1,0 +1,50 @@
+package pipeline_types;
+
+typedef struct packed {
+    logic        valid;
+    logic [31:0] pc;
+    logic [31:0] inst;
+} fetch_dec_t;
+
+
+typedef struct packed {
+    logic        valid;
+    logic [4:0]  rs1;
+    logic [4:0]  rs2;
+    logic [4:0]  rd;
+    logic [31:0] imm;
+
+    logic        ALUSrc;
+    logic [2:0]  ALUOp;
+    logic        branch;
+    logic        jump;
+
+    logic        MemRead;
+    logic        MemWrite;
+    logic        RegWrite;
+    logic        MemToReg;
+} dec_ren_t;
+
+
+typedef struct packed {
+    logic        valid;
+    logic [5:0]  rs1_p;
+    logic [5:0]  rs2_p;
+    logic [5:0]  rd_new_p;
+    logic [5:0]  rd_old_p;
+    logic [5:0]  rob_tag;
+
+    logic        ALUSrc;
+    logic [2:0]  ALUOp;
+    logic        branch;
+    logic        jump;
+    logic        MemRead;
+    logic        RegWrite;
+    logic        MemToReg;
+    logic [31:0] pc;
+    logic [31:0] imm;
+} ren_disp_t;
+
+// ... more typedefs here ...
+
+endpackage

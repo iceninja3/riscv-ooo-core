@@ -1,4 +1,6 @@
-module top #(
+import pipeline_types::*;
+
+module RISCV #(
     parameter int ADDR_WIDTH = 9,
     parameter int DATA_WIDTH = 32
 )(
@@ -25,7 +27,7 @@ module top #(
     output logic        fe_RegWrite_o,
     output logic        fe_MemToReg_o
 );
-
+	 localparam int FD_WIDTH = $bits(fetch_dec_t);
 
     logic [ADDR_WIDTH-1:0] icache_addr;
     logic [DATA_WIDTH-1:0] icache_rdata;
@@ -74,7 +76,7 @@ module top #(
 
     // skid buffer between fetch and decode
     skid_buffer_struct #(
-        .T(fetch_dec_t)
+        .WIDTH(FD_WIDTH)
     ) u_skid_fd (
         .clk       (clk),
         .reset     (reset),
@@ -130,3 +132,4 @@ module top #(
     assign fe_MemToReg_o= MemToReg;
 
 endmodule
+
