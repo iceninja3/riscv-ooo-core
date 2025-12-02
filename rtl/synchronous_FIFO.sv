@@ -1,18 +1,19 @@
 module fifo #(
-    parameter type T = logic [31:0],
-    parameter DEPTH = 8
+    parameter int WIDTH = 32,
+    parameter int DEPTH = 8
 ) (
     input logic  clk, 
     input logic  reset, 
 
     input logic  write_en,
-    input T      write_data,
+    input logic [WIDTH-1:0] write_data,
     input logic  read_en, 
-    output T     read_data,
+    output logic [WIDTH-1:0] read_data,
     output logic full,
     output logic empty
 );
 
+typedef logic [WIDTH-1:0] T;
 localparam int PW = $clog2(DEPTH);
 logic [PW-1:0] wr_ptr;
 logic [PW-1:0] rd_ptr;
@@ -75,4 +76,4 @@ always_ff @(posedge clk) begin
     end 
 end 
 
-endmodule 
+endmodule

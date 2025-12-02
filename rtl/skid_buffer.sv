@@ -1,5 +1,5 @@
 module skid_buffer_struct #(
-    parameter type T = logic
+    parameter int WIDTH = 32
 ) (
     input logic clk,
     input logic reset,
@@ -7,14 +7,15 @@ module skid_buffer_struct #(
     // upstream (producer -> skid)
     input logic valid_in,
     output logic ready_in,
-    input T     data_in,
+    input logic [WIDTH-1:0]     data_in,
 
     // downstream (skid -> consumer)
     output logic valid_out,
     input logic ready_out,
-    output T     data_out
+    output logic [WIDTH-1:0]     data_out
 );
 
+typedef logic [WIDTH-1:0] T;
     // Internal state registers
     logic occupied_ff; // Tracks if our buffer slot is full. 1'b0 = empty, 1'b1 = full.
     T     data_reg;    // The register to store the data.
