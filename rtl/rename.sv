@@ -8,14 +8,19 @@ module Rename #(
   input  logic                      rst,
 
   // decode stage
-  input  logic                      dec_valid_i,
-  input  logic [4:0]                dec_rs1_i,
-  input  logic [4:0]                dec_rs2_i,
-  input  logic [4:0]                dec_rd_i,
+  input  logic                      dec_valid_i, 
+  input  logic [4:0]                dec_rs1_i, //rs 1
+  input  logic [4:0]                dec_rs2_i, //rs 2
+  input  logic [4:0]                dec_rd_i, //rd
   input  logic                      dec_rs1_used_i,
   input  logic                      dec_rs2_used_i,
-  input  logic                      dec_rd_used_i,
+  input  logic                      dec_rd_used_i, // connect to RegWrite in decode
   input  logic                      dec_is_branch_i,   
+
+
+  //pass along payload of instruction to dispatch
+  input  pipeline_types::ctrl_payload_t payload_i,
+  output pipeline_types::ctrl_payload_t payload_o,
 
   // for dispatch stage 
   output logic                      ren_valid_o,
@@ -83,7 +88,8 @@ module Rename #(
 
   //allocate if either we don't need a new PREG or the free list is non empty
   logic resources_ok;
-  assign resources_ok = (!need_alloc) || (fl_count > 0);
+  // assign resources_ok = (!need_alloc) || (fl_count > 0);
+  assign resources_ok = ((!need_alloc) || (fl_count > 0)) && (!dec_is_branch_i || ckpt_sp < N_CHECKPTS);
 
   //accept a new decode instruction if either
   //its output register is empty or
@@ -158,6 +164,8 @@ module Rename #(
 
         // (2) accept new instruction if allowed
         if (accept_decode) begin
+          payload_o <= payload_i; //pass payload through rename module
+
           // Compute sources
           rs1_p_q <= dec_rs1_used_i ? map_table[dec_rs1_i] : '0;
           rs2_p_q <= dec_rs2_used_i ? map_table[dec_rs2_i] : '0;

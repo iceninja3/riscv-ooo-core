@@ -28,6 +28,9 @@ module decode (
     output logic [4:0]  rs1,
     output logic [4:0]  rs2,
     output logic [4:0]  rd, 
+    output logic rs1_valid,  // tells Rename if rs1 is actually used
+    output logic rs2_valid,  // tells Rename if rs2 is actually used
+    output pipeline_types::ctrl_payload_t ctrl_payload_o
 
     output logic [31:0] imm, // immediate gets sign extended to 32 bits
 
@@ -42,9 +45,10 @@ module decode (
     output logic MemWrite,
 
     // control Signals for WB Stage
-    output logic RegWrite,
+    output logic RegWrite, //in rename this connects to dec_rd_used_i
     output logic MemToReg
 );
+    import pipeline_types::*; // import for ctrl_payload_t
 
     logic [6:0] opcode;
     logic [2:0] funct3;
@@ -87,8 +91,12 @@ module decode (
         RegWrite  = 1'b0;
         MemToReg  = 1'b0;
         imm       = 32'b0;
+
+        rs1_valid = 1'b0; 
+        rs2_valid = 1'b0;
+        fu_type   = FU_ALU; // Default to ALU
         
-        // **BUG FIX**: Default rs1, rs2, and rd to 0
+        // bug fix -> default rs1, rs2, and rd to 0
         rs1       = 5'b0;
         rs2       = 5'b0;
         rd        = 5'b0;
@@ -99,6 +107,7 @@ module decode (
                 RegWrite  = 1'b1;
                 ALUOp     = 3'b100;
                 rd        = inst_rd; // U-Type has rd
+                fu_type   = FU_ALU;
             end
 
             opcode_ITYPE: begin // ADDI, ORI, SLTIU
@@ -107,6 +116,9 @@ module decode (
                 ALUOp     = 3'b010;
                 rd        = inst_rd; // I-Type has rd
                 rs1       = inst_rs1; // I-Type has rs1
+
+                rs1_valid = 1'b1; // VALID
+                fu_type   = FU_ALU;
             end
 
             opcode_RTYPE: begin // SUB, SRA, AND
@@ -116,6 +128,10 @@ module decode (
                 rd        = inst_rd; // R-Type has rd
                 rs1       = inst_rs1; // R-Type has rs1
                 rs2       = inst_rs2; // R-Type has rs2
+
+                rs1_valid = 1'b1; // VALID
+                rs2_valid = 1'b1; // VALID
+                fu_type   = FU_ALU; 
             end
 
             opcode_LOAD: begin // LW, LBU
@@ -126,6 +142,9 @@ module decode (
                 ALUOp     = 3'b000;
                 rd        = inst_rd; // I-Type (Load) has rd
                 rs1       = inst_rs1; // I-Type (Load) has rs1
+
+                rs1_valid = 1'b1; // VALID
+                fu_type   = FU_LSU; // Send to Load/Store Unit
             end
 
             opcode_STORE: begin // SW, SH
@@ -134,6 +153,10 @@ module decode (
                 ALUOp     = 3'b000;
                 rs1       = inst_rs1; // S-Type has rs1
                 rs2       = inst_rs2; // S-Type has rs2
+
+                rs1_valid = 1'b1; // VALID
+                rs2_valid = 1'b1; // VALID
+                fu_type   = FU_LSU; // Send to Load/Store Unit
             end
 
             opcode_BRANCH: begin // BNE
@@ -141,8 +164,12 @@ module decode (
                 ALUOp     = 3'b011;
                 rs1       = inst_rs1; // B-Type has rs1
                 rs2       = inst_rs2; // B-Type has rs2
+
+                rs1_valid = 1'b1; // VALID
+                rs2_valid = 1'b1; // VALID
+                fu_type   = FU_BRANCH; // Send to Branch Unit
                 
-                // **BUG FIX**: Only enable for BNE
+                // only enable for BNE
                 if (funct3 == 3'b001) begin 
                     branch = 1'b1;
                 end
@@ -155,6 +182,9 @@ module decode (
                 ALUOp     = 3'b101;
                 rd        = inst_rd; // I-Type (JALR) has rd
                 rs1       = inst_rs1; // I-Type (JALR) has rs1
+
+                rs1_valid = 1'b1; // VALID
+                fu_type   = FU_BRANCH; // Send to Branch Unit
             end
             default: begin
                 // All defaults are set
@@ -193,6 +223,22 @@ module decode (
             default:
                 imm = 32'b0;
         endcase
+
+
+        //keep payload correct
+        ctrl_payload_o.pc       = pc;
+        ctrl_payload_o.imm      = imm;
+        ctrl_payload_o.inst     = inst;
+        ctrl_payload_o.ALUSrc   = ALUSrc;
+        ctrl_payload_o.ALUOp    = ALUOp;
+        ctrl_payload_o.MemRead  = MemRead;
+        ctrl_payload_o.MemWrite = MemWrite;
+        ctrl_payload_o.RegWrite = RegWrite;
+        ctrl_payload_o.MemToReg = MemToReg;
+        ctrl_payload_o.fu_type  = fu_type;
+        ctrl_payload_o.is_branch= branch;
+        ctrl_payload_o.is_jump  = jump;
+
     end
 
 endmodule
