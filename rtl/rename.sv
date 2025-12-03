@@ -8,14 +8,14 @@ module Rename #(
   input  logic                      rst,
 
   // decode stage
-  input  logic                      dec_valid_i, 
+  input  logic                      dec_valid_i, //skid buffer
   input  logic [4:0]                dec_rs1_i, //rs 1
   input  logic [4:0]                dec_rs2_i, //rs 2
   input  logic [4:0]                dec_rd_i, //rd
-  input  logic                      dec_rs1_used_i,
-  input  logic                      dec_rs2_used_i,
+  input  logic                      dec_rs1_used_i, // tells Rename if rs1 is actually used
+  input  logic                      dec_rs2_used_i,// tells Rename if rs2 is actually used
   input  logic                      dec_rd_used_i, // connect to RegWrite in decode
-  input  logic                      dec_is_branch_i,   
+  input  logic                      dec_is_branch_i, //same as branch in decode
 
 
   //pass along payload of instruction to dispatch
