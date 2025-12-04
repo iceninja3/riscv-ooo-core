@@ -1,5 +1,32 @@
 package pipeline_types;
 
+typedef struct packed {
+    logic        valid;         // Is this slot occupied?
+    logic        done;          // Has execution finished? (Ready to commit?)
+    logic [4:0]  rd_log;        // Logical destination (r1, r2...)
+    logic [5:0]  rd_phys;       // New physical destination (p32...)
+    logic [5:0]  rd_old_phys;   // Old physical destination (stale p5...) to free
+    logic        is_branch;     // Is this a branch?
+    logic        mispredicted;  // Did this branch mispredict?
+    logic [31:0] pc;            // PC for exception/recovery
+} rob_entry_t; // for ROB
+
+// 1. Packet sent from Dispatch -> Reservation Stations
+typedef struct packed {
+    logic [31:0] pc;
+    logic [31:0] imm;
+    logic [2:0]  alu_op;
+    logic        alu_src;
+    logic        mem_read;
+    logic        mem_write;
+    
+    // Physical Tags (Rename results)
+    logic [5:0]  rs1_p;
+    logic [5:0]  rs2_p;
+    logic [5:0]  rd_p;      // Physical Destination
+    logic [3:0]  rob_tag;   // ROB ID (assuming 16 entries = 4 bits)
+} rs_issue_packet_t;
+
 typedef enum logic [1:0] {
         FU_ALU,    // Add, Sub, Logical
         FU_LSU,    // Load, Store

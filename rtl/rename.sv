@@ -83,13 +83,7 @@ module Rename #(
   assign need_alloc = dec_valid_i && dec_rd_used_i && (dec_rd_i != X0_LOG);
 
   logic resources_ok;
-<<<<<<< HEAD
-  // assign resources_ok = (!need_alloc) || (fl_count > 0);
   assign resources_ok = ((!need_alloc) || (fl_count > 0)) && (!dec_is_branch_i || ckpt_sp < N_CHECKPTS);
-=======
-  assign resources_ok = ((!need_alloc) || (fl_count > 0))
-                        && (!dec_is_branch_i || ckpt_sp < N_CHECKPTS);
->>>>>>> dfd6ecb (added changes for quartus)
 
   logic stage_ready_for_decode;
   assign stage_ready_for_decode = (!out_valid_q) || ren_ready_i;
@@ -159,14 +153,9 @@ module Rename #(
           out_valid_q <= 0;
 
         if (accept_decode) begin
-<<<<<<< HEAD
           payload_o <= payload_i; //pass payload through rename module
 
           // Compute sources
-=======
-          payload_o <= payload_i;
-
->>>>>>> dfd6ecb (added changes for quartus)
           rs1_p_q <= dec_rs1_used_i ? map_table[dec_rs1_i] : '0;
           rs2_p_q <= dec_rs2_used_i ? map_table[dec_rs2_i] : '0;
 

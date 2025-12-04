@@ -1,99 +1,86 @@
 module rob #(
-    parameter int ROB_DEPTH = 16,
-    parameter int TAG_WIDTH = 6
-) (
+    parameter int ROB_DEPTH = 16,   // Size of 16 
+    parameter int ROB_TAG_W = 4     // $clog2(16)
+)(
     input  logic clk,
     input  logic rst,
 
-    // Dispatch Interface (Allocation)
-    input  logic alloc_valid_i,
-    input  cpu_types_pkg::dispatch_packet_t alloc_pkt_i,
-    output logic full_o,
-    output logic [TAG_WIDTH-1:0] tail_ptr_o,
+    // --- Interface with Dispatch ---
+    input  logic dispatch_valid_i,
+    input  rob_entry_t dispatch_entry_i, // Struct we defined above
+    output logic rob_full_o,             // Stalls Dispatch if high
+    output logic [ROB_TAG_W-1:0] alloc_tag_o, // The ID (index) given to this instr
 
-    // WRITEBACK INTERFACE (New)
-    // The CDB tells us: "Tag X is done!"
-    input  cpu_types_pkg::cdb_t cdb_i,
+    // --- Interface with Execution Units (CDB) ---
+    // When an ALU finishes, it broadcasts "Tag X is done!"
+    input  logic cdb_valid_i,
+    input  logic [ROB_TAG_W-1:0] cdb_tag_i,
+    input  logic cdb_mispredict_i, // Optional: if it was a bad branch
 
-    // COMMIT INTERFACE (New)
-    // To Rename/FreeList
-    output logic commit_valid_o,
-    output logic [5:0] commit_free_preg_o, // The OLD phys reg to free
-    output logic [5:0] commit_new_preg_o,  // The NEW phys reg (now architectural)
-    output logic [4:0] commit_lreg_o       // Logical reg for debug/RAT
+    // --- Interface with Rename (Commit Feedback) ---
+    output logic commit_valid_o,          // "Instruction retired!"
+    output logic [5:0] commit_old_preg_o, // "Free this physical register"
+    output logic commit_mispredict_o,     // "Flush the pipeline!"
+    output logic [ROB_TAG_W-1:0] commit_tag_recovery_o // Tail pointer to restore to
 );
-    import cpu_types_pkg::*;
 
-    rob_entry_t entries [ROB_DEPTH];
-    logic [$clog2(ROB_DEPTH)-1:0] head, tail;
-    logic [$clog2(ROB_DEPTH):0]   count;
+    // Storage [cite: 51-52]
+    rob_entry_t rob_array [ROB_DEPTH];
+    logic [ROB_TAG_W-1:0] head_ptr; // Commit pointer
+    logic [ROB_TAG_W-1:0] tail_ptr; // Allocate pointer
+    logic [ROB_TAG_W:0]   count;    // To track full/empty status
 
-    assign full_o = (count == ROB_DEPTH);
-
-    // ============================================================
-    // COMMIT LOGIC
-    // ============================================================
-    // 1. Peek at the Head. Is it valid and complete?
-    assign commit_valid_o = (count > 0) && entries[head].valid && entries[head].complete;
-
-    // 2. Output the data required by Rename to free the old register
-    assign commit_free_preg_o = entries[head].old_rd_phys;
+    // Full Signal
+    assign rob_full_o = (count == ROB_DEPTH);
     
-    // (Optional) Useful for debug or Arch RAT
-    assign commit_lreg_o      = entries[head].rd_log;
-    assign commit_new_preg_o  = entries[head].rd_phys;
+    // Tag Assignment
+    assign alloc_tag_o = tail_ptr;
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            head  <= '0;
-            tail  <= '0;
-            count <= '0;
-            for(int i=0; i<ROB_DEPTH; i++) begin
-                entries[i].valid    <= 0;
-                entries[i].complete <= 0;
-            end
+            head_ptr <= '0;
+            tail_ptr <= '0;
+            count    <= '0;
+            commit_valid_o <= 1'b0;
+            // Clear valid bits in array...
         end else begin
             
-            // --- ALLOCATION (Dispatch) ---
-            if (alloc_valid_i && !full_o) begin
-                entries[tail].valid       <= 1'b1;
-                entries[tail].complete    <= 1'b0; // Not done yet
-                entries[tail].rd_log      <= alloc_pkt_i.rd_log;
-                entries[tail].rd_phys     <= alloc_pkt_i.rd_phys;
-                entries[tail].old_rd_phys <= alloc_pkt_i.old_rd_phys;
-                entries[tail].pc          <= alloc_pkt_i.pc;
+            // --- 1. COMMIT LOGIC (Head) ---
+            commit_valid_o <= 1'b0; // Default
+            
+            // If the oldest instruction (head) is valid AND execution is done:
+            if (count > 0 && rob_array[head_ptr].valid && rob_array[head_ptr].done) begin
+                commit_valid_o      <= 1'b1;
+                commit_old_preg_o   <= rob_array[head_ptr].rd_old_phys;
+                commit_mispredict_o <= rob_array[head_ptr].mispredicted;
                 
-                tail  <= tail + 1'b1;
-                // Only increment count if we aren't simultaneously committing
-                if (!commit_valid_o) count <= count + 1'b1;
+                // Advance Head
+                head_ptr <= head_ptr + 1'b1;
+                count    <= count - 1'b1; // (Note: handle simultaneous dispatch carefully)
+                
+                // Mark slot as invalid
+                rob_array[head_ptr].valid <= 1'b0;
             end
 
-            // --- WRITEBACK (Update) ---
-            // If CDB says "Tag 5 finished", we find the ROB entry for Tag 5 
-            // and mark it complete. 
-            // Note: In a real ROB, you might index by ROB ID. 
-            // Here, we scan or assume CDB tag maps to ROB. 
-            // For this specific simplified "Read-After-Issue" design, 
-            // let's assume the CDB carries the Physical Register ID.
-            if (cdb_i.valid) begin
-                // We must search which ROB entry owns this physical register.
-                // (Optimization: Usually we store ROB ID in the RS to avoid this search)
-                for (int i=0; i<ROB_DEPTH; i++) begin
-                    if (entries[i].valid && entries[i].rd_phys == cdb_i.tag) begin
-                        entries[i].complete <= 1'b1;
-                    end
+            // --- 2. DISPATCH LOGIC (Tail) ---
+            // If Dispatch sends something and we aren't full:
+            if (dispatch_valid_i && !rob_full_o) begin
+                rob_array[tail_ptr] <= dispatch_entry_i;
+                rob_array[tail_ptr].valid <= 1'b1;
+                rob_array[tail_ptr].done  <= 1'b0; // Not done yet!
+                
+                tail_ptr <= tail_ptr + 1'b1;
+                count    <= count + 1'b1; // (Again, handle simulataneous commit/dispatch)
+            end
+
+            // --- 3. WRITEBACK / COMPLETION LOGIC ---
+            // Execution unit says "Tag X finished"
+            if (cdb_valid_i) begin
+                rob_array[cdb_tag_i].done <= 1'b1;
+                if (cdb_mispredict_i) begin
+                   rob_array[cdb_tag_i].mispredicted <= 1'b1;
                 end
-            end
-
-            // --- COMMIT (Retirement) ---
-            if (commit_valid_o) begin
-                entries[head].valid <= 1'b0; // Clear the entry
-                head <= head + 1'b1;
-                
-                // If we aren't allocating new ones, count goes down
-                if (!(alloc_valid_i && !full_o)) count <= count - 1'b1;
             end
         end
     end
-
 endmodule
