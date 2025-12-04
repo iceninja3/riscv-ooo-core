@@ -6,17 +6,17 @@ module Fetch #(
     input  logic                  clk,
     input  logic                  reset,
 
-    output logic [ADDR_WIDTH-1:0] icache_addr,  
+    output logic [ADDR_WIDTH-1:0] icache_addr,
     input  logic [DATA_WIDTH-1:0] icache_rdata, 
 
     //skid buffer 
-    output logic                  valid_o,     
-    input  logic                  ready_i,      
-    output logic [31:0]           pc_o,         
-    output logic [DATA_WIDTH-1:0] inst_o     
+    output logic                  valid_o,
+    input  logic                  ready_i,
+    output logic [31:0]           pc_o,
+    output logic [DATA_WIDTH-1:0] inst_o
 );
 
-    
+
     logic [31:0] pc_req;
     logic [31:0] pc_reg;
     logic [DATA_WIDTH-1:0] inst_reg;
@@ -28,7 +28,7 @@ module Fetch #(
     assign pc_o   = pc_reg;
     assign inst_o = inst_reg;
 
-    
+
     always_ff @(posedge clk) begin
         if (reset) begin
             pc_req   <= RESET_PC;

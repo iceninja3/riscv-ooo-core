@@ -98,10 +98,15 @@ module RISCV #(
 
     decode u_decode (
         .inst     (fetch_data_out.inst),
+		  .pc 		(fetch_data_out.pc),
 
         .rs1      (rs1),
         .rs2      (rs2),
         .rd       (rd),
+		  .rs1_valid (rs1_valid),
+		  .rs2_valid (rs2_valid),
+		  .ctrl_payload_o (fe_ctrl_payload),
+		  
         .imm      (imm),
 
         .ALUSrc   (ALUSrc),
@@ -132,4 +137,3 @@ module RISCV #(
     assign fe_MemToReg_o= MemToReg;
 
 endmodule
-
