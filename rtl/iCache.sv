@@ -10,11 +10,12 @@ module iCache #(
 logic [DATA_WIDTH-1:0] mem [0:(1<<ADDR_WIDTH)-1];
 
 initial begin 
-    $readmemh("program.hex", mem);
+    $readmemh("Simulation/program_hex.txt", mem);
 end
 
-assign rdata = mem[addr];
+always_ff @(posedge clk) begin
+    rdata <= mem[addr];
+end
 
 
-endmodule 
-
+endmodule
