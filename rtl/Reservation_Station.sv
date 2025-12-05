@@ -1,92 +1,115 @@
 module reservation_station #(
-    parameter NUM_SLOTS = 8
+    parameter NUM_SLOTS = 8,
+    parameter N_PHYS    = 64
 )(
     input logic clk, reset,
-    
+
     // --- Interface with Dispatch ---
     input logic  write_en,
-    input rs_entry_t write_data, // The instruction details
+    // Note: This input is the PACKET from Dispatch (no ready bits yet)
+    input pipeline_types::rs_issue_packet_t write_data, 
+    
+    // NEW: We need to know if registers are ALREADY ready in the PRF
+    // (You need a busy-bit table in your top-level to drive these)
+    input logic  src1_already_ready_i, 
+    input logic  src2_already_ready_i,
+
     output logic full,
-    
-    // --- Interface with CDB (Common Data Bus) for Wakeup ---
+
+    // --- Interface with CDB (Wakeup) ---
     input logic       cdb_valid,
-    input logic [6:0] cdb_tag,   // Physical Register that just computed
-    
+    input logic [5:0] cdb_tag,
+
     // --- Interface with Execution ---
-    input  logic      issue_ready, // Can execution unit take a job?
-    output logic      issue_valid, // We have a job for you
-    output rs_entry_t issue_data   // The job
+    input  logic      issue_ready,
+    output logic      issue_valid,
+    output pipeline_types::rs_entry_t issue_data // Output full struct
 );
+    import pipeline_types::*;
 
     rs_entry_t slots [NUM_SLOTS-1:0];
-    logic [NUM_SLOTS-1:0] slots_valid;      // Bitmask: 1=Busy, 0=Free
-    logic [NUM_SLOTS-1:0] slots_runnable;   // Bitmask: 1=Ready to run
-    
-    // ---------------------------------------------------------
-    // 1. ALLOCATION LOGIC (Find free slot)
-    // ---------------------------------------------------------
+    logic [NUM_SLOTS-1:0] slots_valid;
+    logic [NUM_SLOTS-1:0] slots_runnable;
+
+    // 1. ALLOCATION (Standard Priority Decoder)
     logic [$clog2(NUM_SLOTS)-1:0] free_idx;
-    logic                         any_free;
+    logic any_free;
     
-    // We want to find a '0' in slots_valid. 
-    // The priority decoder finds '1's. So we invert the input.
+    // Use your priority decoder module here
+    // (Assuming valid output means "found a 1")
+    // We invert slots_valid to find the first '0'
     priority_decoder #(.WIDTH(NUM_SLOTS)) alloc_decoder (
-        .in(~slots_valid), 
-        .out(free_idx), 
+        .in(~slots_valid),
+        .out(free_idx),
         .valid(any_free)
     );
-    
-    assign full = ~any_free; // If no bits are 0, we are full
+    assign full = ~any_free;
 
-    // ---------------------------------------------------------
-    // 2. WAKEUP LOGIC (Listen to CDB)
-    // ---------------------------------------------------------
+    // 2. LOGIC
     always_ff @(posedge clk) begin
         if (reset) begin
             slots_valid <= '0;
-            // Clear other fields...
         end else begin
-            // A. Write new instruction
+            
+            // --- A. Allocation (Write from Dispatch) ---
             if (write_en && !full) begin
-                slots[free_idx] <= write_data;
                 slots_valid[free_idx] <= 1'b1;
+                
+                // Copy Data Fields
+                slots[free_idx].pc      <= write_data.pc;
+                slots[free_idx].imm     <= write_data.imm;
+                slots[free_idx].alu_op  <= write_data.alu_op;
+                slots[free_idx].alu_src <= write_data.alu_src;
+                slots[free_idx].p_src1  <= write_data.rs1_p;
+                slots[free_idx].p_src2  <= write_data.rs2_p;
+                slots[free_idx].p_dst   <= write_data.rd_p;
+                slots[free_idx].rob_tag <= write_data.rob_tag;
+
+                // --- SMART READY BIT INITIALIZATION ---
+                
+                // SRC 1: Ready if (Already Ready in PRF) OR (Waking up on CDB right now!)
+                if (src1_already_ready_i || (cdb_valid && cdb_tag == write_data.rs1_p))
+                    slots[free_idx].src1_ready <= 1'b1;
+                else
+                    slots[free_idx].src1_ready <= 1'b0;
+
+                // SRC 2: Ready if (Immediate Mode) OR (Already Ready) OR (Waking up)
+                if (write_data.alu_src == 1'b1) // Immediate? Always ready!
+                    slots[free_idx].src2_ready <= 1'b1;
+                else if (src2_already_ready_i || (cdb_valid && cdb_tag == write_data.rs2_p))
+                    slots[free_idx].src2_ready <= 1'b1;
+                else
+                    slots[free_idx].src2_ready <= 1'b0;
             end
 
-            // B. Listen to CDB (Wakeup)
+            // --- B. Wakeup (Snoop the CDB) ---
             for (int i = 0; i < NUM_SLOTS; i++) begin
                 if (slots_valid[i]) begin
-                    // If src1 matches CDB broadcast, mark it ready
-                    if (cdb_valid && slots[i].p_src1 == cdb_tag) 
+                    // If we are waiting for this tag, set ready
+                    if (cdb_valid && slots[i].p_src1 == cdb_tag)
                         slots[i].src1_ready <= 1'b1;
-                        
-                    // If src2 matches CDB broadcast, mark it ready
-                    if (cdb_valid && slots[i].p_src2 == cdb_tag) 
+                    if (cdb_valid && slots[i].p_src2 == cdb_tag)
                         slots[i].src2_ready <= 1'b1;
                 end
             end
-            
-            // C. Clear slot after Issue (Atomic move to execution)
-            if (issue_ready && issue_valid) begin
-                 slots_valid[issue_idx] <= 1'b0; 
+
+            // --- C. Issue (Clear the slot) ---
+            if (issue_valid && issue_ready) begin
+                slots_valid[issue_idx] <= 1'b0;
             end
         end
     end
 
-    // ---------------------------------------------------------
-    // 3. ISSUE LOGIC (Pick runnable instruction)
-    // ---------------------------------------------------------
-    // An instruction is runnable if Valid + Src1 Ready + Src2 Ready
+    // 3. ISSUE SELECTION
     always_comb begin
         for (int i=0; i<NUM_SLOTS; i++) begin
-            slots_runnable[i] = slots_valid[i] && 
-                                slots[i].src1_ready && 
-                                slots[i].src2_ready;
+            // Runnable if Valid AND Both Sources Ready
+            slots_runnable[i] = slots_valid[i] && slots[i].src1_ready && slots[i].src2_ready;
         end
     end
-
+    
     logic [$clog2(NUM_SLOTS)-1:0] issue_idx;
     
-    // Use your decoder again to pick the first ready instruction
     priority_decoder #(.WIDTH(NUM_SLOTS)) issue_decoder (
         .in(slots_runnable),
         .out(issue_idx),

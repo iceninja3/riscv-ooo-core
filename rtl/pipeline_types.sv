@@ -1,6 +1,26 @@
 package pipeline_types;
 
 typedef struct packed {
+    logic [31:0] pc;
+    logic [31:0] imm;
+    logic [2:0]  alu_op;
+    logic        alu_src;   // 1 if Second Operand is Immediate
+    logic        mem_read;
+    logic        mem_write;
+    
+    // Physical tags
+    logic [5:0]  p_src1;
+    logic [5:0]  p_src2;
+    logic [5:0]  p_dst;
+    logic [5:0]  rob_tag;
+    
+    // Internal State (Not from Dispatch, but tracked in RS)
+    logic        src1_ready;
+    logic        src2_ready;
+} rs_entry_t;
+
+
+typedef struct packed {
     logic        valid;         // Is this slot occupied?
     logic        done;          // Has execution finished? (Ready to commit?)
     logic [4:0]  rd_log;        // Logical destination (r1, r2...)
