@@ -1,6 +1,4 @@
-
- 
-
+`timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Company: 
 // Engineer: 
@@ -33,9 +31,7 @@ module decode (
     output logic [4:0]  rd, 
     output logic rs1_valid,  // tells Rename if rs1 is actually used
     output logic rs2_valid,  // tells Rename if rs2 is actually used
-
     output pipeline_types::ctrl_payload_t ctrl_payload_o,
-
 
     output logic [31:0] imm, // immediate gets sign extended to 32 bits
 

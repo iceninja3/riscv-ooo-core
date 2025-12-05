@@ -52,7 +52,7 @@ typedef struct packed {
     //payload to go through rename from decode to execute without being touched/modified at all by Rename
 
 typedef struct packed {
-    logic        valid;
+    //logic        valid;
     logic [31:0] pc;
     logic [31:0] inst;
 } fetch_dec_t;

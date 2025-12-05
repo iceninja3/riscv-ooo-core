@@ -16,6 +16,7 @@ module skid_buffer_struct #(
 );
 
 typedef logic [WIDTH-1:0] T;
+
     // Internal state registers
     logic occupied_ff; // Tracks if our buffer slot is full. 1'b0 = empty, 1'b1 = full.
     T     data_reg;    // The register to store the data.

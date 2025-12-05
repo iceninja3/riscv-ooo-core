@@ -1,3 +1,4 @@
+import pipeline_types::*;
 module rob #(
     parameter int ROB_DEPTH = 16,   // Size of 16 
     parameter int ROB_TAG_W = 4     // $clog2(16)
