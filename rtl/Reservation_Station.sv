@@ -34,6 +34,8 @@ module reservation_station #(
     // 1. ALLOCATION (Standard Priority Decoder)
     logic [$clog2(NUM_SLOTS)-1:0] free_idx;
     logic any_free;
+	 
+	 logic [$clog2(NUM_SLOTS)-1:0] issue_idx;
     
     // Use your priority decoder module here
     // (Assuming valid output means "found a 1")
@@ -64,6 +66,9 @@ module reservation_station #(
                 slots[free_idx].p_src2  <= write_data.rs2_p;
                 slots[free_idx].p_dst   <= write_data.rd_p;
                 slots[free_idx].rob_tag <= write_data.rob_tag;
+					 
+					 slots[free_idx].is_branch <= write_data.is_branch;
+					 slots[free_idx].is_jump   <= write_data.is_jump;
 
                 // --- SMART READY BIT INITIALIZATION ---
                 
@@ -108,7 +113,6 @@ module reservation_station #(
         end
     end
     
-    logic [$clog2(NUM_SLOTS)-1:0] issue_idx;
     
     priority_decoder #(.WIDTH(NUM_SLOTS)) issue_decoder (
         .in(slots_runnable),

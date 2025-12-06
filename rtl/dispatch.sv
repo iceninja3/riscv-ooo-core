@@ -117,6 +117,8 @@ module Dispatch (
     assign issue_pkt_o.rs2_p     = buff_rs2_p;
     assign issue_pkt_o.rd_p      = buff_rd_new_p;
     assign issue_pkt_o.rob_tag   = rob_alloc_tag_i; // Use the tag the ROB gave us
+	 assign issue_pkt_o.is_branch = payload_i.is_branch;
+    assign issue_pkt_o.is_jump   = payload_i.is_jump;
 
     // B. To ROB
     assign rob_push_o = fire_dispatch;
