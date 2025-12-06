@@ -2,11 +2,11 @@ module Rename #(
   parameter int N_LOG        = 32,
   parameter int N_PHYS       = 64,
   parameter int N_CHECKPTS   = 8,
-  parameter int ROB_TAG_W    = 6
+  parameter int ROB_TAG_W    = 4 // change to 4
 )(
   input  logic                      clk,
   input  logic                      rst,
-
+// rob tag changed in renam,e pipeline types, and the 3 functional units
   // decode stage
   input  logic                      dec_valid_i,
   input  logic [4:0]                dec_rs1_i,

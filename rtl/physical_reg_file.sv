@@ -5,36 +5,70 @@ module physical_reg_file #(
 )(
     input logic clk,
     
-    // --- READ PORTS (From Reservation Stations) ---
-    // Port A (e.g., for ALU Source 1)
+    // ---------------------------------------------------------
+    // READ PORTS (From Reservation Stations)
+    // ---------------------------------------------------------
+
+    // --- 1. ALU Unit Read Ports ---
     input  logic [ADDR_WIDTH-1:0] raddr_alu_src1,
     output logic [DATA_WIDTH-1:0] rdata_alu_src1,
     
-    // Port B (e.g., for ALU Source 2)
     input  logic [ADDR_WIDTH-1:0] raddr_alu_src2,
     output logic [DATA_WIDTH-1:0] rdata_alu_src2,
 
-    // ... Repeat for Branch and LSU units ...
-    // (For brevity, I am showing just 1 set, but you would duplicate this)
+    // --- 2. Branch Unit Read Ports ---
+    // (Needed for BEQ/BNE comparisons)
+    input  logic [ADDR_WIDTH-1:0] raddr_br_src1,
+    output logic [DATA_WIDTH-1:0] rdata_br_src1,
 
-    // --- WRITE PORTS (From Execution Units / CDB) ---
+    input  logic [ADDR_WIDTH-1:0] raddr_br_src2,
+    output logic [DATA_WIDTH-1:0] rdata_br_src2,
+
+    // --- 3. LSU Unit Read Ports ---
+    // (Needed for Address calculation and Store Data)
+    input  logic [ADDR_WIDTH-1:0] raddr_lsu_src1, // Base Address
+    output logic [DATA_WIDTH-1:0] rdata_lsu_src1,
+
+    input  logic [ADDR_WIDTH-1:0] raddr_lsu_src2, // Store Data
+    output logic [DATA_WIDTH-1:0] rdata_lsu_src2,
+
+
+    // ---------------------------------------------------------
+    // WRITE PORT (From CDB / Execution Units)
+    // ---------------------------------------------------------
     input  logic                  wen,      // Write Enable
     input  logic [ADDR_WIDTH-1:0] waddr,    // Physical Register Address
     input  logic [DATA_WIDTH-1:0] wdata     // Result Data
 );
 
-    // The Register Array
-    // logic [31:0] regs [0:127];
+    // The Physical Register Array
     logic [DATA_WIDTH-1:0] registers [0:NUM_REGS-1];
 
-    // Asynchronous Read (standard for Register Files in pipelines)
+    // ---------------------------------------------------------
+    // Asynchronous Read Logic
+    // ---------------------------------------------------------
+    
+    // ALU
     assign rdata_alu_src1 = registers[raddr_alu_src1];
     assign rdata_alu_src2 = registers[raddr_alu_src2];
 
-    // Synchronous Write
+    // Branch
+    assign rdata_br_src1  = registers[raddr_br_src1];
+    assign rdata_br_src2  = registers[raddr_br_src2];
+
+    // LSU
+    assign rdata_lsu_src1 = registers[raddr_lsu_src1];
+    assign rdata_lsu_src2 = registers[raddr_lsu_src2];
+
+
+    // ---------------------------------------------------------
+    // Synchronous Write Logic
+    // ---------------------------------------------------------
     always_ff @(posedge clk) begin
-        if (wen && waddr != '0) begin // Optional: P0 is usually hardwired 0 in arch, but strictly P0 in PRF might be valid data. 
-                                      // If P0 is NOT architectural R0, remove the "&& waddr != '0" check.
+        // P0 is typically hardwired to 0 in the logical architectural file (ARF),
+        // but in the PRF, P0 is just a valid physical index like any other.
+        // However, if your Rename logic explicitly maps x0 -> P0, you should protect it.
+        if (wen && waddr != '0) begin 
             registers[waddr] <= wdata;
         end
     end

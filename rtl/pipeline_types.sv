@@ -12,7 +12,7 @@ typedef struct packed {
     logic [5:0]  p_src1;
     logic [5:0]  p_src2;
     logic [5:0]  p_dst;
-    logic [5:0]  rob_tag;
+    logic [3:0]  rob_tag;
     
     // Internal State (Not from Dispatch, but tracked in RS)
     logic        src1_ready;
@@ -105,7 +105,7 @@ typedef struct packed {
     logic [5:0]  rs2_p;
     logic [5:0]  rd_new_p;
     logic [5:0]  rd_old_p;
-    logic [5:0]  rob_tag;
+    logic [3:0]  rob_tag;
 
     logic        ALUSrc;
     logic [2:0]  ALUOp;
