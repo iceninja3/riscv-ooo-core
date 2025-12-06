@@ -101,7 +101,7 @@ module decode (
                 unique case (funct3)
                     funct3_ADDI:  ALUOp = ALU_ADD; // ADDI
                     funct3_ORI:   ALUOp = ALU_OR;  // ORI
-                    fu nct3_SLTIU: ALUOp = ALU_SUB; // TEMP: treat as SUB/compare later
+                    funct3_SLTIU: ALUOp = ALU_SUB; // TEMP: treat as SUB/compare later
                     default:      ALUOp = ALU_ADD;
                 endcase
             end
