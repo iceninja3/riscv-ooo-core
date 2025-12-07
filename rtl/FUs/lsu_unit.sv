@@ -12,8 +12,7 @@ module lsu_unit #(
     input  logic [5:0]            rd_p_i,
     input  logic [ROB_TAG_W-1:0]  rob_tag_i,
     
-    // NEW: We need funct3 to distinguish LB/LBU/LH/LW/SB/SH/SW
-    // You must verify this is wired from Decode -> Dispatch -> RS -> Here!
+    // Need funct3 to distinguish LB/LBU/LH/LW/SB/SH/SW
     input  logic [2:0]            funct3_i,    
 
     output logic                  ready_o,
@@ -31,8 +30,6 @@ module lsu_unit #(
     end
 
     // FSM States
-    // S_ACCESS: Read the memory (for Loads AND Stores)
-    // S_WB: Write-back to CDB (for Loads) OR Write-back to Memory (for Stores)
     typedef enum logic [1:0] {S_IDLE, S_ACCESS, S_WB} state_t;
     state_t state, next_state;
 
@@ -43,14 +40,15 @@ module lsu_unit #(
     // Metadata storage
     logic [5:0]           rd_p_q;
     logic [ROB_TAG_W-1:0] rob_tag_q;
-    logic [31:0]          mem_rdata_q; // Data read from memory
-    logic [31:0]          store_data_q; // Data to store
+    logic [31:0]          mem_rdata_q;   // Data read from memory
+    logic [31:0]          store_data_q;  // Data to store
     logic [1:0]           addr_offset_q; // Bottom 2 bits of address
     logic [2:0]           funct3_q;
     logic                 is_store_q;
 
     // --- Synchronous Memory Access ---
-    always_ff @(posedge clk) begin
+    // NOTE: plain always, not always_ff, so ModelSim is happy with initial + this.
+    always @(posedge clk) begin
         // 1. CYCLE 0: S_IDLE -> Start Operation
         if (state == S_IDLE && valid_i) begin
             // Always Read first (Needed for Loads AND Sub-word Stores)
@@ -67,15 +65,11 @@ module lsu_unit #(
 
         // 2. CYCLE 2: S_WB -> Perform Store Write (if needed)
         if (state == S_ACCESS && is_store_q) begin
-            // We are in the WB stage for a Store. 
-            // We have the OLD data (mem_rdata_q) and the NEW data (store_data_q).
-            // We combine them and write back.
-            
             logic [31:0] wdata_combined;
             wdata_combined = mem_rdata_q; // Default to old data
 
-            case (funct3_q) // Check Funct3 (SB, SH, SW)
-                3'b000: begin // SB (Store Byte)
+            case (funct3_q) // SB, SH, SW
+                3'b000: begin // SB
                     case (addr_offset_q)
                         2'b00: wdata_combined[7:0]   = store_data_q[7:0];
                         2'b01: wdata_combined[15:8]  = store_data_q[7:0];
@@ -83,23 +77,18 @@ module lsu_unit #(
                         2'b11: wdata_combined[31:24] = store_data_q[7:0];
                     endcase
                 end
-                3'b001: begin // SH (Store Halfword)
-                    case (addr_offset_q[1]) // Check bit 1 (0 or 2)
+                3'b001: begin // SH
+                    case (addr_offset_q[1])
                         1'b0: wdata_combined[15:0]  = store_data_q[15:0];
                         1'b1: wdata_combined[31:16] = store_data_q[15:0];
                     endcase
                 end
-                3'b010: begin // SW (Store Word)
+                3'b010: begin // SW
                     wdata_combined = store_data_q;
                 end
             endcase
 
             // Perform the Write
-            // Note: We need the word-aligned address again. 
-            // In a real pipeline we'd latch 'addr', but here 'addr' might have changed 
-            // if rs1 changed. Let's assume RS holds inputs steady or we latched addr.
-            // BETTER SAFE: You should latch 'addr' in S_IDLE if inputs aren't stable.
-            // For now assuming inputs hold steady or using a latched index:
             dmem[addr[11:2]] <= wdata_combined; 
         end
     end
@@ -127,7 +116,7 @@ module lsu_unit #(
 
             S_WB: begin
                 // BOTH loads and stores signal completion to ROB via CDB.
-                valid_o  = 1'b1;
+                valid_o    = 1'b1;
                 next_state = S_IDLE;
             end
         endcase
@@ -140,7 +129,7 @@ module lsu_unit #(
         final_load_data = mem_rdata_q; // Default to LW
 
         case (funct3_q)
-            3'b000: begin // LB (Load Byte Signed)
+            3'b000: begin // LB
                 case (addr_offset_q)
                     2'b00: final_load_data = {{24{mem_rdata_q[7]}},  mem_rdata_q[7:0]};
                     2'b01: final_load_data = {{24{mem_rdata_q[15]}}, mem_rdata_q[15:8]};
@@ -148,7 +137,7 @@ module lsu_unit #(
                     2'b11: final_load_data = {{24{mem_rdata_q[31]}}, mem_rdata_q[31:24]};
                 endcase
             end
-            3'b001: begin // LH (Load Half Signed)
+            3'b001: begin // LH
                 case (addr_offset_q[1])
                     1'b0: final_load_data = {{16{mem_rdata_q[15]}}, mem_rdata_q[15:0]};
                     1'b1: final_load_data = {{16{mem_rdata_q[31]}}, mem_rdata_q[31:16]};
@@ -157,7 +146,7 @@ module lsu_unit #(
             3'b010: begin // LW
                 final_load_data = mem_rdata_q;
             end
-            3'b100: begin // LBU (Load Byte Unsigned) <-- REQUESTED
+            3'b100: begin // LBU
                 case (addr_offset_q)
                     2'b00: final_load_data = {24'b0, mem_rdata_q[7:0]};
                     2'b01: final_load_data = {24'b0, mem_rdata_q[15:8]};
@@ -165,7 +154,7 @@ module lsu_unit #(
                     2'b11: final_load_data = {24'b0, mem_rdata_q[31:24]};
                 endcase
             end
-            3'b101: begin // LHU (Load Half Unsigned)
+            3'b101: begin // LHU
                 case (addr_offset_q[1])
                     1'b0: final_load_data = {16'b0, mem_rdata_q[15:0]};
                     1'b1: final_load_data = {16'b0, mem_rdata_q[31:16]};
@@ -174,6 +163,7 @@ module lsu_unit #(
         endcase
     end
 
+    // Stores don't write a register, so squash rd_p for them
     assign result_o  = final_load_data;
     assign rd_p_o    = is_store_q ? 6'd0 : rd_p_q;
     assign rob_tag_o = rob_tag_q;
