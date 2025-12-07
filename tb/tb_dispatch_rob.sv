@@ -88,6 +88,13 @@ module tb_riscv_rob_full;
     `define CDB_ROB_TAG     dut.cdb_rob_tag
     `define CDB_MISP        dut.cdb_mispredict
 
+    // ---- LSU internals for visibility / checking ----
+    `define LSU_DMEM(i)     dut.u_lsu.dmem[i]
+    `define LSU_IS_STORE    dut.u_lsu.is_store_q
+    `define LSU_FUNCT3      dut.u_lsu.funct3_q
+    `define LSU_ADDR_IDX    dut.u_lsu.addr[11:2]
+    `define LSU_OFFS        dut.u_lsu.addr_offset_q
+
     // Clock
     always #5 clk = ~clk;
 
@@ -120,14 +127,50 @@ module tb_riscv_rob_full;
                      `ALU_CDB_DATA, `ALU_CDB_PREG, `ALU_CDB_TAG);
     end
 
-    // Print LSU events
+    // Print LSU events + correctness checks (LW + LBU)
     always @(posedge clk) begin
         if (`RS_LSU_ISSUE_V)
             $display("  [LSU RS ] issue_valid=1  (time=%0t)", $time);
 
-        if (`LSU_CDB_VALID)
-            $display("  [LSU FU ] CDB valid=1  result=0x%08h  rd_p=%0d  rob_tag=%0d",
-                     `LSU_CDB_DATA, `LSU_CDB_PREG, `LSU_CDB_TAG);
+        if (`LSU_CDB_VALID) begin
+            int idx;
+            idx = `LSU_ADDR_IDX;
+
+            if (`LSU_IS_STORE) begin
+                // STORE completed: show memory after the write
+                $display("  [LSU STORE] rob_tag=%0d word_idx=%0d dmem_after=0x%08h (rd_p=%0d)",
+                         `LSU_CDB_TAG, idx, `LSU_DMEM(idx), `LSU_CDB_PREG);
+            end
+            else begin
+                // LOAD completed: compare result to memory
+                logic [31:0] mem_word;
+                mem_word = `LSU_DMEM(idx);
+
+                $display("  [LSU LOAD ] rob_tag=%0d word_idx=%0d dmem=0x%08h  result=0x%08h funct3=%0b offs=%0d",
+                         `LSU_CDB_TAG, idx, mem_word, `LSU_CDB_DATA, `LSU_FUNCT3, `LSU_OFFS);
+
+                // LW check (funct3 == 3'b010)
+                if (`LSU_FUNCT3 == 3'b010) begin
+                    if (`LSU_CDB_DATA !== mem_word)
+                        $error("LOAD MISMATCH (LW): expected 0x%08h got 0x%08h",
+                               mem_word, `LSU_CDB_DATA);
+                end
+                // LBU check (funct3 == 3'b100)
+                else if (`LSU_FUNCT3 == 3'b100) begin
+                    logic [7:0] expected_byte;
+                    case (`LSU_OFFS)
+                        2'b00: expected_byte = mem_word[7:0];
+                        2'b01: expected_byte = mem_word[15:8];
+                        2'b10: expected_byte = mem_word[23:16];
+                        2'b11: expected_byte = mem_word[31:24];
+                    endcase
+
+                    if (`LSU_CDB_DATA !== {24'b0, expected_byte})
+                        $error("LOAD MISMATCH (LBU): expected 0x%02h got 0x%08h (mem=0x%08h offs=%0d)",
+                               expected_byte, `LSU_CDB_DATA, mem_word, `LSU_OFFS);
+                end
+            end
+        end
     end
 
     // Print Branch events
@@ -159,6 +202,16 @@ module tb_riscv_rob_full;
         reset = 0;
         $display("===== Release reset =====");
 
+        // Initialize LSU memory for LOAD tests.
+        // These are word indices; byte address = idx * 4.
+        // You can tweak these to match what your trace expects.
+        `LSU_DMEM(0) = 32'hDEADBEEF;
+        `LSU_DMEM(1) = 32'h11223344;
+        `LSU_DMEM(2) = 32'hAABBCCDD;
+
+        $display("[TB] Preloaded dmem[0]=0x%08h dmem[1]=0x%08h dmem[2]=0x%08h",
+                 `LSU_DMEM(0), `LSU_DMEM(1), `LSU_DMEM(2));
+
         // Let it run for a while to see FU activity and ROB filling
         `STEP(120);
 
@@ -168,6 +221,12 @@ module tb_riscv_rob_full;
             $display("WARNING: ROB did NOT fill — something is still stalling before dispatch.");
 
         `STEP(20);
+
+        // Final memory dump to visually inspect stores
+        $display("===== Final dmem dump (first 16 words) =====");
+        for (int i = 0; i < 16; i++) begin
+            $display("  dmem[%0d] = 0x%08h", i, `LSU_DMEM(i));
+        end
 
         $display("===== Testbench finished =====");
         $stop;

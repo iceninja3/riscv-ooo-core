@@ -113,6 +113,7 @@ module Dispatch (
     assign issue_pkt_o.alu_src   = buff_payload.ALUSrc;
     assign issue_pkt_o.mem_read  = buff_payload.MemRead;
     assign issue_pkt_o.mem_write = buff_payload.MemWrite;
+	 assign issue_pkt_o.funct3    = buff_payload.funct3;
     assign issue_pkt_o.rs1_p     = buff_rs1_p;
     assign issue_pkt_o.rs2_p     = buff_rs2_p;
     assign issue_pkt_o.rd_p      = buff_rd_new_p;

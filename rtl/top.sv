@@ -520,25 +520,38 @@ module RISCV #(
     assign lsu_base = prf_rdata_lsu_src1;
     assign lsu_imm  = lsu_issue_entry.imm;
 
-    lsu_unit #(
-        .ROB_TAG_W(ROB_TAG_W)
-    ) u_lsu (
-        .clk         (clk),
-        .rst         (reset),
-        .valid_i     (lsu_issue_valid),
-        .mem_read_i  (lsu_issue_entry.mem_read),
-        .rs1_val_i   (lsu_base),
-        .imm_i       (lsu_imm),
-        .rd_p_i      (lsu_issue_entry.p_dst),
-        .rob_tag_i   (lsu_issue_entry.rob_tag),
+	lsu_unit #(
+    .ROB_TAG_W(ROB_TAG_W)
+	) u_lsu (
+		 .clk         (clk),
+		 .rst         (reset),
 
-        .ready_o     (lsu_ready),
+		 .valid_i     (lsu_issue_valid),
 
-        .valid_o     (lsu_cdb_valid),
-        .result_o    (lsu_cdb_data),
-        .rd_p_o      (lsu_cdb_preg),
-        .rob_tag_o   (lsu_cdb_tag)
-    );
+		 // control
+		 .mem_read_i  (lsu_issue_entry.mem_read),
+		 .mem_write_i (lsu_issue_entry.mem_write),   
+
+		 // operands
+		 .rs1_val_i   (lsu_base),                    
+		 .rs2_val_i   (prf_rdata_lsu_src2),          
+		 .imm_i       (lsu_imm),
+
+		 // dest + tag
+		 .rd_p_i      (lsu_issue_entry.p_dst),
+		 .rob_tag_i   (lsu_issue_entry.rob_tag),
+
+		 // load/store width/sign
+		 .funct3_i    (lsu_issue_entry.funct3),     
+
+		 // handshake / outputs
+		 .ready_o     (lsu_ready),
+
+		 .valid_o     (lsu_cdb_valid),
+		 .result_o    (lsu_cdb_data),
+		 .rd_p_o      (lsu_cdb_preg),
+		 .rob_tag_o   (lsu_cdb_tag)
+	);	
 
     // ---- Branch RS + FU ----
     rs_entry_t br_issue_entry;

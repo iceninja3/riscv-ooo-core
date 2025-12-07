@@ -62,6 +62,9 @@ module reservation_station #(
                 slots[free_idx].imm     <= write_data.imm;
                 slots[free_idx].alu_op  <= write_data.alu_op;
                 slots[free_idx].alu_src <= write_data.alu_src;
+				slots[free_idx].mem_read  <= write_data.mem_read;
+				slots[free_idx].mem_write <= write_data.mem_write;
+				slots[free_idx].funct3    <= write_data.funct3;
                 slots[free_idx].p_src1  <= write_data.rs1_p;
                 slots[free_idx].p_src2  <= write_data.rs2_p;
                 slots[free_idx].p_dst   <= write_data.rd_p;

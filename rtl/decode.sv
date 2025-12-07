@@ -101,7 +101,7 @@ module decode (
                 unique case (funct3)
                     funct3_ADDI:  ALUOp = ALU_ADD; // ADDI
                     funct3_ORI:   ALUOp = ALU_OR;  // ORI
-                    funct3_SLTIU: ALUOp = ALU_SUB; // TEMP: treat as SUB/compare later
+                    funct3_SLTIU: ALUOp = ALU_SLTU; // TEMP: treat as SUB/compare later
                     default:      ALUOp = ALU_ADD;
                 endcase
             end
@@ -123,7 +123,7 @@ module decode (
                     {7'b0000000, 3'b111}: ALUOp = ALU_AND; // AND
                     {7'b0000000, 3'b110}: ALUOp = ALU_OR;  // OR
                     {7'b0000000, 3'b100}: ALUOp = ALU_XOR; // XOR
-                    // SRA/SRL/etc can be added later
+                    {7'b0100000, 3'b101}: ALUOp = ALU_SRA; // SRA
                     default:              ALUOp = ALU_ADD;
                 endcase
             end
@@ -228,6 +228,8 @@ module decode (
         ctrl_payload_o.fu_type   = fu_type;
         ctrl_payload_o.is_branch = branch;
         ctrl_payload_o.is_jump   = jump;
+		  ctrl_payload_o.funct3    = funct3;
+		  
     end
 
 endmodule

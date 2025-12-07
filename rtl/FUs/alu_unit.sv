@@ -1,5 +1,5 @@
 module alu_unit #(
-    parameter int ROB_TAG_W = 4  // must match ROB_TAG_W in top-level/ROB
+    parameter int ROB_TAG_W = 4
 )(
     input  logic                  clk,
     input  logic                  rst,
@@ -10,7 +10,6 @@ module alu_unit #(
     input  logic [5:0]            rd_p_i,
     input  logic [ROB_TAG_W-1:0]  rob_tag_i,
 
-    // Output to Writeback/ROB (CDB)
     output logic                  valid_o,
     output logic [31:0]           result_o,
     output logic [5:0]            rd_p_o,
@@ -22,16 +21,26 @@ module alu_unit #(
 
     always_comb begin
         unique case (alu_op_i)
-            ALU_ADD: res_c = op1_i + op2_i;
-            ALU_SUB: res_c = op1_i - op2_i;
-            ALU_AND: res_c = op1_i & op2_i;
-            ALU_OR : res_c = op1_i | op2_i;
-            ALU_XOR: res_c = op1_i ^ op2_i;
+            // Existing
+            ALU_ADD: res_c = op1_i + op2_i;        // Handles ADD, ADDI, LUI (if rs1=0)
+            ALU_SUB: res_c = op1_i - op2_i;        // Handles SUB
+            ALU_AND: res_c = op1_i & op2_i;        // Handles AND
+            ALU_OR : res_c = op1_i | op2_i;        // Handles OR, ORI
+            ALU_XOR: res_c = op1_i ^ op2_i;        // Handles XOR
+
+            // NEW: SRA (Shift Right Arithmetic)
+            // Must cast to $signed to get arithmetic shift (preserving sign bit)
+            ALU_SRA: res_c = $signed(op1_i) >>> op2_i[4:0]; 
+
+            // NEW: SLTU (Set Less Than Unsigned)
+            // Handles SLTIU. Result is 1 if op1 < op2 (unsigned), else 0.
+            ALU_SLTU: res_c = (op1_i < op2_i) ? 32'd1 : 32'd0;
+
             default: res_c = '0;
         endcase
     end
 
-    // Simple 1-cycle pipeline register
+    // Pipeline Register
     always_ff @(posedge clk) begin
         if (rst) begin
             valid_o <= 1'b0;
