@@ -45,8 +45,8 @@ module Fetch #(
                 // 1. Capture Data coming back from Cache (Latency = 1)
                 inst_reg <= icache_rdata;
 
-                // 2. Capture the PC that matches this data (The one from 1 cycle ago)
-                pc_reg   <= pc_delayed;
+                // 2. Capture the PC that matches this data 
+                pc_reg   <= pc_req;
 
                 // 3. Advance the Pipeline
                 pc_delayed   <= pc_req;       // Save current PC for next cycle

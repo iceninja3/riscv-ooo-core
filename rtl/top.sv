@@ -297,7 +297,31 @@ module RISCV #(
     logic        prf_wen;
     logic [5:0]  prf_waddr;
     logic [31:0] prf_wdata;
+// Scoreboard / Busy Vector
+    // ----------------------------
+    logic [N_PHYS-1:0] phys_reg_busy;
 
+    always_ff @(posedge clk) begin
+        if (reset) begin
+            phys_reg_busy <= '0;
+        end else begin
+            // 1. Set Busy when we Dispatch a new destination
+            if (ren_valid && ren_ready) begin
+                phys_reg_busy[rd_new_p] <= 1'b1;
+            end
+
+            // 2. Clear Busy when CDB broadcasts a result
+            if (cdb_valid) begin
+                phys_reg_busy[cdb_preg] <= 1'b0;
+            end
+
+            // Corner Case: If Dispatch and CDB happen to same register same cycle, 
+            // Dispatch (New Instruction) wins and keeps it busy.
+            if (ren_valid && ren_ready && cdb_valid && (rd_new_p == cdb_preg)) begin
+                phys_reg_busy[rd_new_p] <= 1'b1;
+            end
+        end
+    end
     physical_reg_file #(
         .DATA_WIDTH (32),
         .NUM_REGS   (N_PHYS),
@@ -399,8 +423,8 @@ module RISCV #(
         .write_en             (dispatch_alu_valid),
         .write_data           (issue_pkt),
 
-        .src1_already_ready_i (1'b1), // no busy-bit tracking yet
-        .src2_already_ready_i (1'b1),
+        .src1_already_ready_i (!phys_reg_busy[issue_pkt.rs1_p]),
+        .src2_already_ready_i (!phys_reg_busy[issue_pkt.rs2_p]),
 
         .full                 (rs_alu_full),
 
@@ -473,8 +497,8 @@ module RISCV #(
         .write_en             (dispatch_lsu_valid),
         .write_data           (issue_pkt),
 
-        .src1_already_ready_i (1'b1),
-        .src2_already_ready_i (1'b1),
+        .src1_already_ready_i (!phys_reg_busy[issue_pkt.rs1_p]),
+        .src2_already_ready_i (!phys_reg_busy[issue_pkt.rs2_p]),
 
         .full                 (rs_lsu_full),
 
@@ -532,8 +556,8 @@ module RISCV #(
         .write_en             (dispatch_branch_valid),
         .write_data           (issue_pkt),
 
-        .src1_already_ready_i (1'b1),
-        .src2_already_ready_i (1'b1),
+        .src1_already_ready_i (!phys_reg_busy[issue_pkt.rs1_p]),
+        .src2_already_ready_i (!phys_reg_busy[issue_pkt.rs2_p]),
 
         .full                 (rs_branch_full),
 
