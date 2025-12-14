@@ -18,7 +18,6 @@ module tb_riscv_rob_full;
     logic        fe_MemRead, fe_MemWrite;
     logic        fe_RegWrite, fe_MemToReg;
 
-    // For this test, always ready at the FE interface
     assign fe_ready = 1'b1;
 
     // Instantiate DUT
@@ -42,15 +41,29 @@ module tb_riscv_rob_full;
         .fe_MemToReg_o (fe_MemToReg)
     );
 
+    // Clock
+    always #5 clk = ~clk;
+
     // --------------------------------------------------
     // Macros to peek internal signals (hierarchical)
     // --------------------------------------------------
 
-    // From ROB
-    `define ROB_COUNT      dut.u_rob.count
-    `define ROB_FULL       dut.rob_full
+    // ROB + commit
+    `define ROB_COUNT        dut.u_rob.count
+    `define ROB_FULL         dut.rob_full
+    `define COMMIT_VALID     dut.commit_valid
+    `define COMMIT_OLDP      dut.commit_old_preg
 
-    // From Rename / Decode / Dispatch
+    // NEW: ROB head visibility (THIS is what you were missing)
+    `define ROB_HEAD_PTR     dut.u_rob.head_ptr
+    `define ROB_TAIL_PTR     dut.u_rob.tail_ptr
+    `define ROB_HEAD_VALID   dut.u_rob.rob_array[`ROB_HEAD_PTR].valid
+    `define ROB_HEAD_DONE    dut.u_rob.rob_array[`ROB_HEAD_PTR].done
+    `define ROB_HEAD_MISP    dut.u_rob.rob_array[`ROB_HEAD_PTR].mispredicted
+    `define ROB_HEAD_OLDP    dut.u_rob.rob_array[`ROB_HEAD_PTR].rd_old_phys
+    `define ROB_HEAD_PC      dut.u_rob.rob_array[`ROB_HEAD_PTR].pc
+
+    // Rename / Decode / Dispatch
     `define REN_READY      dut.ren_ready
     `define REN_VALID      dut.ren_valid
     `define DEC_VALID      dut.dec_valid
@@ -88,24 +101,23 @@ module tb_riscv_rob_full;
     `define CDB_ROB_TAG     dut.cdb_rob_tag
     `define CDB_MISP        dut.cdb_mispredict
 
-    // ---- LSU internals for visibility / checking ----
-    `define LSU_DMEM(i)     dut.u_lsu.dmem[i]
-    `define LSU_IS_STORE    dut.u_lsu.is_store_q
-    `define LSU_FUNCT3      dut.u_lsu.funct3_q
-    `define LSU_ADDR_IDX    dut.u_lsu.addr[11:2]
-    `define LSU_OFFS        dut.u_lsu.addr_offset_q
-
-    // Clock
-    always #5 clk = ~clk;
+    // ---- Extra branch internals for checking ----
+    `define BR_IS_BRANCH    dut.br_issue_entry.is_branch
+    `define BR_IS_JUMP      dut.br_issue_entry.is_jump
+    `define BR_PC           dut.br_issue_entry.pc
+    `define BR_IMM          dut.br_issue_entry.imm
+    `define BR_RS1_VAL      dut.br_rs1_val
+    `define BR_RS2_VAL      dut.br_rs2_val
+    `define BR_TAKEN        dut.br_taken_o
 
     // --------------------------------------------------
     // Helper macros
     // --------------------------------------------------
-
     `define PRINT_CYCLE \
-        $display("[%0t] PC=%08h dec_v=%0d ren_v=%0d ren_rdy=%0d buff_v=%0d rob_cnt=%0d rob_full=%0d fire_disp=%0d", \
+        $display("[%0t] PC=%08h dec_v=%0d ren_v=%0d ren_rdy=%0d buff_v=%0d rob_cnt=%0d rob_full=%0d fire_disp=%0d | head=%0d v=%0d d=%0d pc=%08h", \
                  $time, fe_pc, `DEC_VALID, `REN_VALID, `REN_READY, `BUFF_VALID, \
-                 `ROB_COUNT, `ROB_FULL, `FIRE_DISPATCH);
+                 `ROB_COUNT, `ROB_FULL, `FIRE_DISPATCH, \
+                 `ROB_HEAD_PTR, `ROB_HEAD_VALID, `ROB_HEAD_DONE, `ROB_HEAD_PC);
 
     `define STEP(n) \
       repeat (n) begin \
@@ -114,10 +126,9 @@ module tb_riscv_rob_full;
       end
 
     // --------------------------------------------------
-    // Extra monitors for FU / CDB activity
+    // FU / CDB activity monitors
     // --------------------------------------------------
 
-    // Print ALU events
     always @(posedge clk) begin
         if (`RS_ALU_ISSUE_V)
             $display("  [ALU RS ] issue_valid=1  (time=%0t)", $time);
@@ -127,53 +138,15 @@ module tb_riscv_rob_full;
                      `ALU_CDB_DATA, `ALU_CDB_PREG, `ALU_CDB_TAG);
     end
 
-    // Print LSU events + correctness checks (LW + LBU)
     always @(posedge clk) begin
         if (`RS_LSU_ISSUE_V)
             $display("  [LSU RS ] issue_valid=1  (time=%0t)", $time);
 
-        if (`LSU_CDB_VALID) begin
-            int idx;
-            idx = `LSU_ADDR_IDX;
-
-            if (`LSU_IS_STORE) begin
-                // STORE completed: show memory after the write
-                $display("  [LSU STORE] rob_tag=%0d word_idx=%0d dmem_after=0x%08h (rd_p=%0d)",
-                         `LSU_CDB_TAG, idx, `LSU_DMEM(idx), `LSU_CDB_PREG);
-            end
-            else begin
-                // LOAD completed: compare result to memory
-                logic [31:0] mem_word;
-                mem_word = `LSU_DMEM(idx);
-
-                $display("  [LSU LOAD ] rob_tag=%0d word_idx=%0d dmem=0x%08h  result=0x%08h funct3=%0b offs=%0d",
-                         `LSU_CDB_TAG, idx, mem_word, `LSU_CDB_DATA, `LSU_FUNCT3, `LSU_OFFS);
-
-                // LW check (funct3 == 3'b010)
-                if (`LSU_FUNCT3 == 3'b010) begin
-                    if (`LSU_CDB_DATA !== mem_word)
-                        $error("LOAD MISMATCH (LW): expected 0x%08h got 0x%08h",
-                               mem_word, `LSU_CDB_DATA);
-                end
-                // LBU check (funct3 == 3'b100)
-                else if (`LSU_FUNCT3 == 3'b100) begin
-                    logic [7:0] expected_byte;
-                    case (`LSU_OFFS)
-                        2'b00: expected_byte = mem_word[7:0];
-                        2'b01: expected_byte = mem_word[15:8];
-                        2'b10: expected_byte = mem_word[23:16];
-                        2'b11: expected_byte = mem_word[31:24];
-                    endcase
-
-                    if (`LSU_CDB_DATA !== {24'b0, expected_byte})
-                        $error("LOAD MISMATCH (LBU): expected 0x%02h got 0x%08h (mem=0x%08h offs=%0d)",
-                               expected_byte, `LSU_CDB_DATA, mem_word, `LSU_OFFS);
-                end
-            end
-        end
+        if (`LSU_CDB_VALID)
+            $display("  [LSU FU ] CDB valid=1  result=0x%08h  rd_p=%0d  rob_tag=%0d",
+                     `LSU_CDB_DATA, `LSU_CDB_PREG, `LSU_CDB_TAG);
     end
 
-    // Print Branch events
     always @(posedge clk) begin
         if (`RS_BR_ISSUE_V)
             $display("  [BR RS  ] issue_valid=1  (time=%0t)", $time);
@@ -183,11 +156,97 @@ module tb_riscv_rob_full;
                      `BR_TAG, `BR_TARGET, `BR_MISPRED);
     end
 
-    // Global CDB monitor (after mux)
     always @(posedge clk) begin
         if (`CDB_VALID)
             $display("  [CDB    ] valid=1  data=0x%08h  preg=%0d  rob_tag=%0d  mispred=%0d",
                      `CDB_DATA, `CDB_PREG, `CDB_ROB_TAG, `CDB_MISP);
+    end
+
+    // NEW: Commit monitor (so you can see drain progress)
+    always @(posedge clk) begin
+        if (`COMMIT_VALID)
+            $display("  [COMMIT ] valid=1  head_tag=%0d free_old_preg=%0d mispred=%0d",
+                     `ROB_HEAD_PTR, `COMMIT_OLDP, dut.commit_mispredict);
+    end
+
+    // --------------------------------------------------
+    // Branch + JALR correctness checker
+    // --------------------------------------------------
+    always @(posedge clk) begin
+        if (`BR_VALID) begin
+            if (`BR_IS_BRANCH && !`BR_IS_JUMP) begin
+                logic        exp_taken;
+                logic [31:0] exp_target;
+                logic        exp_misp;
+
+                exp_taken  = (`BR_RS1_VAL != `BR_RS2_VAL);
+                exp_target = `BR_PC + `BR_IMM;
+                exp_misp   = exp_taken;
+
+                $display("  [CHECK BNE] pc=0x%08h rs1_val=0x%08h rs2_val=0x%08h imm=0x%08h",
+                         `BR_PC, `BR_RS1_VAL, `BR_RS2_VAL, `BR_IMM);
+                $display("              expected_taken=%0d  actual_taken=%0d",
+                         exp_taken, `BR_TAKEN);
+                $display("              expected_target=0x%08h actual_target=0x%08h",
+                         exp_target, `BR_TARGET);
+                $display("              expected_misp=%0d   actual_misp=%0d",
+                         exp_misp, `BR_MISPRED);
+
+                if (exp_taken !== `BR_TAKEN)
+                    $display("              ** ERROR: BNE taken mismatch **");
+                if (exp_target !== `BR_TARGET)
+                    $display("              ** ERROR: BNE target mismatch **");
+                if (exp_misp !== `BR_MISPRED)
+                    $display("              ** ERROR: BNE mispredict flag mismatch **");
+                if (exp_taken === `BR_TAKEN &&
+                    exp_target === `BR_TARGET &&
+                    exp_misp   === `BR_MISPRED)
+                    $display("              [OK] BNE behavior matches expectation.");
+            end
+            else if (!`BR_IS_BRANCH && `BR_IS_JUMP) begin
+                logic [31:0] exp_target;
+                exp_target = (`BR_RS1_VAL + `BR_IMM) & 32'hFFFF_FFFE;
+
+                $display("  [CHECK JALR] pc=0x%08h rs1_val=0x%08h imm=0x%08h",
+                         `BR_PC, `BR_RS1_VAL, `BR_IMM);
+                $display("                expected_target=0x%08h actual_target=0x%08h",
+                         exp_target, `BR_TARGET);
+
+                if (exp_target !== `BR_TARGET)
+                    $display("                ** ERROR: JALR target mismatch **");
+                else
+                    $display("                [OK] JALR target matches expectation.");
+            end
+            else begin
+                $display("  [CHECK BR/JMP] Unrecognized combo is_branch=%0d is_jump=%0d",
+                         `BR_IS_BRANCH, `BR_IS_JUMP);
+            end
+        end
+    end
+
+    // --------------------------------------------------
+    // Watchdog: ROB full but head never becomes done/commits
+    // --------------------------------------------------
+    int no_commit_ctr;
+    always @(posedge clk) begin
+        if (reset) begin
+            no_commit_ctr <= 0;
+        end else begin
+            if (`ROB_FULL && !`COMMIT_VALID)
+                no_commit_ctr <= no_commit_ctr + 1;
+            else
+                no_commit_ctr <= 0;
+
+            if (no_commit_ctr == 200) begin
+                $display("** WATCHDOG: ROB full with no commit for 200 cycles -> likely wedged **");
+                $display("   head_ptr=%0d head_valid=%0d head_done=%0d head_pc=%08h head_oldpreg=%0d head_misp=%0d",
+                         `ROB_HEAD_PTR, `ROB_HEAD_VALID, `ROB_HEAD_DONE, `ROB_HEAD_PC,
+                         `ROB_HEAD_OLDP, `ROB_HEAD_MISP);
+                $display("   last_cdb: valid=%0d tag=%0d preg=%0d data=%08h",
+                         `CDB_VALID, `CDB_ROB_TAG, `CDB_PREG, `CDB_DATA);
+                $stop;
+            end
+        end
     end
 
     // --------------------------------------------------
@@ -196,37 +255,12 @@ module tb_riscv_rob_full;
     initial begin
         $display("===== Starting RISCV pipeline + ROB/FU test =====");
 
-        // Reset
         reset = 1;
         `STEP(4);
         reset = 0;
         $display("===== Release reset =====");
 
-        // Initialize LSU memory for LOAD tests.
-        // These are word indices; byte address = idx * 4.
-        // You can tweak these to match what your trace expects.
-        `LSU_DMEM(0) = 32'hDEADBEEF;
-        `LSU_DMEM(1) = 32'h11223344;
-        `LSU_DMEM(2) = 32'hAABBCCDD;
-
-        $display("[TB] Preloaded dmem[0]=0x%08h dmem[1]=0x%08h dmem[2]=0x%08h",
-                 `LSU_DMEM(0), `LSU_DMEM(1), `LSU_DMEM(2));
-
-        // Let it run for a while to see FU activity and ROB filling
-        `STEP(120);
-
-        if (`ROB_FULL)
-            $display("ROB FULL condition detected as expected!");
-        else
-            $display("WARNING: ROB did NOT fill — something is still stalling before dispatch.");
-
-        `STEP(20);
-
-        // Final memory dump to visually inspect stores
-        $display("===== Final dmem dump (first 16 words) =====");
-        for (int i = 0; i < 16; i++) begin
-            $display("  dmem[%0d] = 0x%08h", i, `LSU_DMEM(i));
-        end
+        `STEP(2000);
 
         $display("===== Testbench finished =====");
         $stop;

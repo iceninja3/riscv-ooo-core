@@ -75,7 +75,7 @@ module RISCV #(
     );
 
     // ----------------------------
-    // Fetch → Decode skid buffer (struct packed into bits)
+    // Fetch → Decode skid buffer
     // ----------------------------
     fetch_dec_t            fetch_data_in;
     fetch_dec_t            fetch_data_out;
@@ -83,16 +83,13 @@ module RISCV #(
     logic [FD_WIDTH-1:0]   fetch_data_out_bits;
 
     logic dec_valid;
-    logic dec_ready;   // driven later by Rename/Dispatch
+    logic dec_ready;
 
-    // Build struct from Fetch outputs
     always_comb begin
-        fetch_data_in.pc    = fetch_pc;
-        fetch_data_in.inst  = fetch_inst;
-        // fetch_data_in.valid is unused for now
+        fetch_data_in.pc   = fetch_pc;
+        fetch_data_in.inst = fetch_inst;
     end
 
-    // Pack/unpack struct <-> bit-vectors
     assign fetch_data_in_bits  = fetch_data_in;
     assign fetch_data_out      = fetch_dec_t'(fetch_data_out_bits);
 
@@ -153,11 +150,10 @@ module RISCV #(
     logic [5:0]    rs1_p, rs2_p, rd_new_p, rd_old_p;
     ctrl_payload_t ren_payload;
 
-    // ROB commit feedback to Rename
     logic                  commit_valid;
     logic [5:0]            commit_old_preg;
     logic                  commit_mispredict;
-    logic [ROB_TAG_W-1:0]  commit_tag_recovery; // not used yet
+    logic [ROB_TAG_W-1:0]  commit_tag_recovery;
 
     Rename #(
         .N_LOG      (N_LOG),
@@ -188,15 +184,14 @@ module RISCV #(
         .rd_new_p_o              (rd_new_p),
         .rd_old_p_o              (rd_old_p),
 
-        .rob_tag_o               (),   // Dispatcher uses ROB's alloc_tag instead
+        .rob_tag_o               (),
 
         .rob_commit_free_valid_i (commit_valid),
         .rob_commit_free_preg_i  (commit_old_preg),
 
-        .recover_i               (1'b0) // hook this up to commit_mispredict later
+        .recover_i               (1'b0)
     );
 
-    // Decode ready comes from Rename/Dispatch
     assign dec_ready = ren_ready;
 
     // ----------------------------
@@ -207,7 +202,6 @@ module RISCV #(
     logic                 rob_push;
     rob_entry_t           rob_entry;
 
-    // CDB from FUs
     logic                 alu_cdb_valid;
     logic [31:0]          alu_cdb_data;
     logic [5:0]           alu_cdb_preg;
@@ -223,41 +217,144 @@ module RISCV #(
     logic                 br_mispredict_o;
     logic [31:0]          br_target_addr_o;
     logic                 br_taken_o;
+    logic [31:0]          br_cdb_data;
+    logic [5:0]           br_cdb_preg;
 
-    // Global CDB signals
     logic                 cdb_valid;
     logic [31:0]          cdb_data;
     logic [5:0]           cdb_preg;
     logic [ROB_TAG_W-1:0] cdb_rob_tag;
     logic                 cdb_mispredict;
 
-    // Simple priority: Branch > LSU > ALU
+    // ============================================================
+    // 1-entry pending buffers per FU (prevents CDB DROPS)
+    // ============================================================
+    logic                 alu_pend_v;
+    logic [31:0]          alu_pend_data;
+    logic [5:0]           alu_pend_preg;
+    logic [ROB_TAG_W-1:0] alu_pend_tag;
+
+    logic                 lsu_pend_v;
+    logic [31:0]          lsu_pend_data;
+    logic [5:0]           lsu_pend_preg;
+    logic [ROB_TAG_W-1:0] lsu_pend_tag;
+
+    logic                 br_pend_v;
+    logic [31:0]          br_pend_data;
+    logic [5:0]           br_pend_preg;
+    logic [ROB_TAG_W-1:0] br_pend_tag;
+    logic                 br_pend_misp;
+
+    // Effective sources = pending if present else raw
+    logic                 alu_src_v;
+    logic [31:0]          alu_src_data;
+    logic [5:0]           alu_src_preg;
+    logic [ROB_TAG_W-1:0] alu_src_tag;
+
+    logic                 lsu_src_v;
+    logic [31:0]          lsu_src_data;
+    logic [5:0]           lsu_src_preg;
+    logic [ROB_TAG_W-1:0] lsu_src_tag;
+
+    logic                 br_src_v;
+    logic [31:0]          br_src_data;
+    logic [5:0]           br_src_preg;
+    logic [ROB_TAG_W-1:0] br_src_tag;
+    logic                 br_src_misp;
+
+    logic sel_br, sel_lsu, sel_alu;
+
+    // Effective-source mapping
     always_comb begin
-        // defaults
+        alu_src_v    = alu_pend_v ? 1'b1 : alu_cdb_valid;
+        alu_src_data = alu_pend_v ? alu_pend_data : alu_cdb_data;
+        alu_src_preg = alu_pend_v ? alu_pend_preg : alu_cdb_preg;
+        alu_src_tag  = alu_pend_v ? alu_pend_tag  : alu_cdb_tag;
+
+        lsu_src_v    = lsu_pend_v ? 1'b1 : lsu_cdb_valid;
+        lsu_src_data = lsu_pend_v ? lsu_pend_data : lsu_cdb_data;
+        lsu_src_preg = lsu_pend_v ? lsu_pend_preg : lsu_cdb_preg;
+        lsu_src_tag  = lsu_pend_v ? lsu_pend_tag  : lsu_cdb_tag;
+
+        br_src_v     = br_pend_v  ? 1'b1 : br_valid_o;
+        br_src_data  = br_pend_v  ? br_pend_data : br_cdb_data;
+        br_src_preg  = br_pend_v  ? br_pend_preg : br_cdb_preg;
+        br_src_tag   = br_pend_v  ? br_pend_tag  : br_rob_tag_o;
+        br_src_misp  = br_pend_v  ? br_pend_misp : br_mispredict_o;
+    end
+
+    // Choose one winner each cycle (priority BR > LSU > ALU)
+    always_comb begin
+        sel_br  = 1'b0;
+        sel_lsu = 1'b0;
+        sel_alu = 1'b0;
+
+        if (br_src_v)       sel_br  = 1'b1;
+        else if (lsu_src_v) sel_lsu = 1'b1;
+        else if (alu_src_v) sel_alu = 1'b1;
+    end
+
+    // Drive the single global CDB
+    always_comb begin
         cdb_valid      = 1'b0;
         cdb_data       = '0;
         cdb_preg       = '0;
         cdb_rob_tag    = '0;
         cdb_mispredict = 1'b0;
 
-        if (br_valid_o) begin
+        if (sel_br) begin
             cdb_valid      = 1'b1;
-            cdb_rob_tag    = br_rob_tag_o;
-            cdb_mispredict = br_mispredict_o;
-        end
-        else if (lsu_cdb_valid) begin
+            cdb_data       = br_src_data;
+            cdb_preg       = br_src_preg;
+            cdb_rob_tag    = br_src_tag;
+            cdb_mispredict = br_src_misp;
+        end else if (sel_lsu) begin
             cdb_valid      = 1'b1;
-            cdb_data       = lsu_cdb_data;
-            cdb_preg       = lsu_cdb_preg;
-            cdb_rob_tag    = lsu_cdb_tag;
+            cdb_data       = lsu_src_data;
+            cdb_preg       = lsu_src_preg;
+            cdb_rob_tag    = lsu_src_tag;
+            cdb_mispredict = 1'b0;
+        end else if (sel_alu) begin
+            cdb_valid      = 1'b1;
+            cdb_data       = alu_src_data;
+            cdb_preg       = alu_src_preg;
+            cdb_rob_tag    = alu_src_tag;
             cdb_mispredict = 1'b0;
         end
-        else if (alu_cdb_valid) begin
-            cdb_valid      = 1'b1;
-            cdb_data       = alu_cdb_data;
-            cdb_preg       = alu_cdb_preg;
-            cdb_rob_tag    = alu_cdb_tag;
-            cdb_mispredict = 1'b0;
+    end
+
+    // Pending buffers: capture "losers" so no FU completion is lost
+    always_ff @(posedge clk) begin
+        if (reset) begin
+            alu_pend_v <= 1'b0;
+            lsu_pend_v <= 1'b0;
+            br_pend_v  <= 1'b0;
+        end else begin
+            if (sel_alu && alu_pend_v) alu_pend_v <= 1'b0;
+            if (sel_lsu && lsu_pend_v) lsu_pend_v <= 1'b0;
+            if (sel_br  && br_pend_v ) br_pend_v  <= 1'b0;
+
+            if (alu_cdb_valid && !alu_pend_v && !sel_alu) begin
+                alu_pend_v    <= 1'b1;
+                alu_pend_data <= alu_cdb_data;
+                alu_pend_preg <= alu_cdb_preg;
+                alu_pend_tag  <= alu_cdb_tag;
+            end
+
+            if (lsu_cdb_valid && !lsu_pend_v && !sel_lsu) begin
+                lsu_pend_v    <= 1'b1;
+                lsu_pend_data <= lsu_cdb_data;
+                lsu_pend_preg <= lsu_cdb_preg;
+                lsu_pend_tag  <= lsu_cdb_tag;
+            end
+
+            if (br_valid_o && !br_pend_v && !sel_br) begin
+                br_pend_v    <= 1'b1;
+                br_pend_data <= br_cdb_data;
+                br_pend_preg <= br_cdb_preg;
+                br_pend_tag  <= br_rob_tag_o;
+                br_pend_misp <= br_mispredict_o;
+            end
         end
     end
 
@@ -284,7 +381,7 @@ module RISCV #(
     );
 
     // ----------------------------
-    // Physical Register File
+    // Physical Register File + Busy Bits
     // ----------------------------
     logic [5:0]  prf_raddr_alu_src1, prf_raddr_alu_src2;
     logic [5:0]  prf_raddr_br_src1,  prf_raddr_br_src2;
@@ -297,31 +394,28 @@ module RISCV #(
     logic        prf_wen;
     logic [5:0]  prf_waddr;
     logic [31:0] prf_wdata;
-// Scoreboard / Busy Vector
-    // ----------------------------
+
     logic [N_PHYS-1:0] phys_reg_busy;
 
     always_ff @(posedge clk) begin
         if (reset) begin
             phys_reg_busy <= '0;
         end else begin
-            // 1. Set Busy when we Dispatch a new destination
-            if (ren_valid && ren_ready) begin
+            if (ren_valid && ren_ready && ren_payload.RegWrite) begin
                 phys_reg_busy[rd_new_p] <= 1'b1;
             end
 
-            // 2. Clear Busy when CDB broadcasts a result
-            if (cdb_valid) begin
+            if (cdb_valid && (cdb_preg != 6'd0)) begin
                 phys_reg_busy[cdb_preg] <= 1'b0;
             end
 
-            // Corner Case: If Dispatch and CDB happen to same register same cycle, 
-            // Dispatch (New Instruction) wins and keeps it busy.
-            if (ren_valid && ren_ready && cdb_valid && (rd_new_p == cdb_preg)) begin
+            if (ren_valid && ren_ready && ren_payload.RegWrite &&
+                cdb_valid && (cdb_preg != 6'd0) && (rd_new_p == cdb_preg)) begin
                 phys_reg_busy[rd_new_p] <= 1'b1;
             end
         end
     end
+
     physical_reg_file #(
         .DATA_WIDTH (32),
         .NUM_REGS   (N_PHYS),
@@ -329,54 +423,42 @@ module RISCV #(
     ) u_prf (
         .clk            (clk),
 
-        // ALU reads
         .raddr_alu_src1 (prf_raddr_alu_src1),
         .rdata_alu_src1 (prf_rdata_alu_src1),
         .raddr_alu_src2 (prf_raddr_alu_src2),
         .rdata_alu_src2 (prf_rdata_alu_src2),
 
-        // Branch reads
         .raddr_br_src1  (prf_raddr_br_src1),
         .rdata_br_src1  (prf_rdata_br_src1),
         .raddr_br_src2  (prf_raddr_br_src2),
         .rdata_br_src2  (prf_rdata_br_src2),
 
-        // LSU reads
         .raddr_lsu_src1 (prf_raddr_lsu_src1),
         .rdata_lsu_src1 (prf_rdata_lsu_src1),
         .raddr_lsu_src2 (prf_raddr_lsu_src2),
         .rdata_lsu_src2 (prf_rdata_lsu_src2),
 
-        // Writeback from CDB
         .wen            (prf_wen),
         .waddr          (prf_waddr),
         .wdata          (prf_wdata)
     );
 
-    // PRF write-back from CDB
-    assign prf_wen   = cdb_valid && (cdb_preg != 6'd0);  // never write phys0
+    assign prf_wen   = cdb_valid && (cdb_preg != 6'd0);
     assign prf_waddr = cdb_preg;
     assign prf_wdata = cdb_data;
 
     // ----------------------------
-    // Dispatch (between Rename and ROB/RS)
+    // Dispatch
     // ----------------------------
     rs_issue_packet_t issue_pkt;
 
-    // Reservation station ready inputs (from RS)
-    logic rs_alu_ready;
-    logic rs_lsu_ready;
-    logic rs_branch_ready;
-
-    logic dispatch_alu_valid;
-    logic dispatch_lsu_valid;
-    logic dispatch_branch_valid;
+    logic rs_alu_ready, rs_lsu_ready, rs_branch_ready;
+    logic dispatch_alu_valid, dispatch_lsu_valid, dispatch_branch_valid;
 
     Dispatch u_dispatch (
         .clk                     (clk),
         .rst                     (reset),
 
-        // From Rename
         .ren_valid_i             (ren_valid),
         .payload_i               (ren_payload),
         .rs1_p_i                 (rs1_p),
@@ -385,18 +467,15 @@ module RISCV #(
         .rd_old_p_i              (rd_old_p),
         .ren_ready_o             (ren_ready),
 
-        // From ROB
         .rob_full_i              (rob_full),
         .rob_alloc_tag_i         (rob_alloc_tag),
         .rob_push_o              (rob_push),
         .rob_entry_o             (rob_entry),
 
-        // From RS (ready)
         .rs_alu_ready_i          (rs_alu_ready),
         .rs_lsu_ready_i          (rs_lsu_ready),
         .rs_branch_ready_i       (rs_branch_ready),
 
-        // To RS (issue)
         .dispatch_alu_valid_o    (dispatch_alu_valid),
         .dispatch_lsu_valid_o    (dispatch_lsu_valid),
         .dispatch_branch_valid_o (dispatch_branch_valid),
@@ -404,10 +483,28 @@ module RISCV #(
     );
 
     // ----------------------------
-    // Reservation Stations + FUs
+    // Used-aware "already-ready" signals
     // ----------------------------
+    logic alu_src1_ready, alu_src2_ready;
+    logic lsu_src1_ready, lsu_src2_ready;
+    logic br_src1_ready,  br_src2_ready;
 
-    // ---- ALU RS + FU ----
+    assign alu_src1_ready = !phys_reg_busy[issue_pkt.rs1_p];
+    assign alu_src2_ready = (issue_pkt.alu_src) ? 1'b1
+                                                : !phys_reg_busy[issue_pkt.rs2_p];
+
+    assign lsu_src1_ready = !phys_reg_busy[issue_pkt.rs1_p];
+    assign lsu_src2_ready = (issue_pkt.mem_write) ? !phys_reg_busy[issue_pkt.rs2_p]
+                                                  : 1'b1;
+
+    assign br_src1_ready  = !phys_reg_busy[issue_pkt.rs1_p];
+    assign br_src2_ready  = (issue_pkt.is_jump)   ? 1'b1
+                         :  (issue_pkt.is_branch) ? !phys_reg_busy[issue_pkt.rs2_p]
+                                                  : 1'b1;
+
+    // ----------------------------
+    // ALU RS + FU
+    // ----------------------------
     rs_entry_t alu_issue_entry;
     logic      rs_alu_full;
     logic      alu_issue_valid;
@@ -423,8 +520,8 @@ module RISCV #(
         .write_en             (dispatch_alu_valid),
         .write_data           (issue_pkt),
 
-        .src1_already_ready_i (!phys_reg_busy[issue_pkt.rs1_p]),
-        .src2_already_ready_i (!phys_reg_busy[issue_pkt.rs2_p]),
+        .src1_already_ready_i (alu_src1_ready),
+        .src2_already_ready_i (alu_src2_ready),
 
         .full                 (rs_alu_full),
 
@@ -437,38 +534,28 @@ module RISCV #(
     );
 
     assign rs_alu_ready = !rs_alu_full;
-    assign alu_ready    = 1'b1;  // ALU can always accept one per cycle
 
-    // ALU PRF read addresses / operands
+    // backpressure ALU if it already has a pending completion
+    assign alu_ready    = !alu_pend_v;
+
     assign prf_raddr_alu_src1 = alu_issue_entry.p_src1;
     assign prf_raddr_alu_src2 = alu_issue_entry.p_src2;
 
     logic [31:0] alu_op1, alu_op2;
     assign alu_op1 = prf_rdata_alu_src1;
-    assign alu_op2 = (alu_issue_entry.alu_src)
-                     ? alu_issue_entry.imm
-                     : prf_rdata_alu_src2;
-	always_ff @(posedge clk) begin
-    if (alu_issue_valid) begin
-        $display("[ALU DBG] t=%0t pc=%08h rs1_p=%0d rs2_p=%0d  op1=%08h op2=%08h  alu_src=%0b imm=%08h alu_op=%0d",
-                 $time,
-                 alu_issue_entry.pc,
-                 alu_issue_entry.p_src1,
-                 alu_issue_entry.p_src2,
-                 alu_op1,
-                 alu_op2,
-                 alu_issue_entry.alu_src,
-                 alu_issue_entry.imm,
-                 alu_issue_entry.alu_op);
-    end
-	end
+    assign alu_op2 = (alu_issue_entry.alu_src) ? alu_issue_entry.imm
+                                               : prf_rdata_alu_src2;
+
+    // ✅ FIX: only fire ALU when RS is actually issuing (valid && ready)
+    logic alu_fire;
+    assign alu_fire = alu_issue_valid && alu_ready;
 
     alu_unit #(
         .ROB_TAG_W(ROB_TAG_W)
     ) u_alu (
         .clk        (clk),
         .rst        (reset),
-        .valid_i    (alu_issue_valid),
+        .valid_i    (alu_fire),
         .alu_op_i   (alu_issue_entry.alu_op),
         .op1_i      (alu_op1),
         .op2_i      (alu_op2),
@@ -481,11 +568,15 @@ module RISCV #(
         .rob_tag_o  (alu_cdb_tag)
     );
 
-    // ---- LSU RS + FU ----
+    // ----------------------------
+    // LSU RS + FU
+    // ----------------------------
     rs_entry_t lsu_issue_entry;
     logic      rs_lsu_full;
     logic      lsu_issue_valid;
-    logic      lsu_ready;
+
+    logic      lsu_ready;        // to RS
+    logic      lsu_ready_unit;   // from LSU
 
     reservation_station #(
         .NUM_SLOTS (8),
@@ -497,8 +588,8 @@ module RISCV #(
         .write_en             (dispatch_lsu_valid),
         .write_data           (issue_pkt),
 
-        .src1_already_ready_i (!phys_reg_busy[issue_pkt.rs1_p]),
-        .src2_already_ready_i (!phys_reg_busy[issue_pkt.rs2_p]),
+        .src1_already_ready_i (lsu_src1_ready),
+        .src2_already_ready_i (lsu_src2_ready),
 
         .full                 (rs_lsu_full),
 
@@ -512,48 +603,51 @@ module RISCV #(
 
     assign rs_lsu_ready = !rs_lsu_full;
 
-    // LSU operands from PRF
+    // backpressure LSU if it has a pending completion not yet drained
+    assign lsu_ready = lsu_ready_unit && !lsu_pend_v;
+
     assign prf_raddr_lsu_src1 = lsu_issue_entry.p_src1;
-    assign prf_raddr_lsu_src2 = lsu_issue_entry.p_src2; // for stores later
+    assign prf_raddr_lsu_src2 = lsu_issue_entry.p_src2;
 
     logic [31:0] lsu_base, lsu_imm;
     assign lsu_base = prf_rdata_lsu_src1;
     assign lsu_imm  = lsu_issue_entry.imm;
 
-	lsu_unit #(
-    .ROB_TAG_W(ROB_TAG_W)
-	) u_lsu (
-		 .clk         (clk),
-		 .rst         (reset),
+    // ✅ FIX: only fire LSU when RS is actually issuing (valid && ready)
+    logic lsu_fire;
+    assign lsu_fire = lsu_issue_valid && lsu_ready;
 
-		 .valid_i     (lsu_issue_valid),
+    lsu_unit #(
+        .ROB_TAG_W(ROB_TAG_W)
+    ) u_lsu (
+        .clk         (clk),
+        .rst         (reset),
 
-		 // control
-		 .mem_read_i  (lsu_issue_entry.mem_read),
-		 .mem_write_i (lsu_issue_entry.mem_write),   
+        .valid_i     (lsu_fire),
 
-		 // operands
-		 .rs1_val_i   (lsu_base),                    
-		 .rs2_val_i   (prf_rdata_lsu_src2),          
-		 .imm_i       (lsu_imm),
+        .mem_read_i  (lsu_issue_entry.mem_read),
+        .mem_write_i (lsu_issue_entry.mem_write),
 
-		 // dest + tag
-		 .rd_p_i      (lsu_issue_entry.p_dst),
-		 .rob_tag_i   (lsu_issue_entry.rob_tag),
+        .rs1_val_i   (lsu_base),
+        .rs2_val_i   (prf_rdata_lsu_src2),
+        .imm_i       (lsu_imm),
 
-		 // load/store width/sign
-		 .funct3_i    (lsu_issue_entry.funct3),     
+        .rd_p_i      (lsu_issue_entry.p_dst),
+        .rob_tag_i   (lsu_issue_entry.rob_tag),
 
-		 // handshake / outputs
-		 .ready_o     (lsu_ready),
+        .funct3_i    (lsu_issue_entry.funct3),
 
-		 .valid_o     (lsu_cdb_valid),
-		 .result_o    (lsu_cdb_data),
-		 .rd_p_o      (lsu_cdb_preg),
-		 .rob_tag_o   (lsu_cdb_tag)
-	);	
+        .ready_o     (lsu_ready_unit),
 
-    // ---- Branch RS + FU ----
+        .valid_o     (lsu_cdb_valid),
+        .result_o    (lsu_cdb_data),
+        .rd_p_o      (lsu_cdb_preg),
+        .rob_tag_o   (lsu_cdb_tag)
+    );
+
+    // ----------------------------
+    // Branch RS + FU
+    // ----------------------------
     rs_entry_t br_issue_entry;
     logic      rs_branch_full;
     logic      br_issue_valid;
@@ -569,8 +663,8 @@ module RISCV #(
         .write_en             (dispatch_branch_valid),
         .write_data           (issue_pkt),
 
-        .src1_already_ready_i (!phys_reg_busy[issue_pkt.rs1_p]),
-        .src2_already_ready_i (!phys_reg_busy[issue_pkt.rs2_p]),
+        .src1_already_ready_i (br_src1_ready),
+        .src2_already_ready_i (br_src2_ready),
 
         .full                 (rs_branch_full),
 
@@ -583,9 +677,10 @@ module RISCV #(
     );
 
     assign rs_branch_ready = !rs_branch_full;
-    assign br_ready        = 1'b1;  // simple 1-cycle branch unit
 
-    // Branch operands from PRF
+    // backpressure BR if it already has a pending completion
+    assign br_ready        = !br_pend_v;
+
     assign prf_raddr_br_src1 = br_issue_entry.p_src1;
     assign prf_raddr_br_src2 = br_issue_entry.p_src2;
 
@@ -593,48 +688,56 @@ module RISCV #(
     assign br_rs1_val = prf_rdata_br_src1;
     assign br_rs2_val = prf_rdata_br_src2;
 
+    // ✅ FIX: only fire BR when RS is actually issuing (valid && ready)
+    logic br_fire;
+    assign br_fire = br_issue_valid && br_ready;
+
     branch_unit #(
         .ROB_TAG_W(ROB_TAG_W)
     ) u_branch (
         .clk            (clk),
         .rst            (reset),
-        .valid_i        (br_issue_valid),
+        .valid_i        (br_fire),
+
         .pc_i           (br_issue_entry.pc),
         .imm_i          (br_issue_entry.imm),
         .rs1_val_i      (br_rs1_val),
         .rs2_val_i      (br_rs2_val),
+
         .is_branch_i    (br_issue_entry.is_branch),
         .is_jump_i      (br_issue_entry.is_jump),
-        .pred_taken_i   (1'b0),               // static not-taken for now
+        .pred_taken_i   (1'b0),
         .rob_tag_i      (br_issue_entry.rob_tag),
+
+        .rd_p_i         (br_issue_entry.p_dst),
 
         .valid_o        (br_valid_o),
         .rob_tag_o      (br_rob_tag_o),
         .mispredict_o   (br_mispredict_o),
         .target_addr_o  (br_target_addr_o),
-        .actual_taken_o (br_taken_o)
+        .actual_taken_o (br_taken_o),
+
+        .result_o       (br_cdb_data),
+        .rd_p_o         (br_cdb_preg)
     );
 
     // ----------------------------
     // Front-end outputs (still from Decode)
     // ----------------------------
-    assign fe_valid_o   = dec_valid;              // front-end "has instruction"
-    assign fe_pc_o      = fetch_data_out.pc;
+    assign fe_valid_o    = dec_valid;
+    assign fe_pc_o       = fetch_data_out.pc;
 
-    assign fe_rs1_o     = rs1;
-    assign fe_rs2_o     = rs2;
-    assign fe_rd_o      = rd;
-    assign fe_imm_o     = imm;
-    assign fe_ALUSrc_o  = ALUSrc;
-    assign fe_ALUOp_o   = ALUOp;
-    assign fe_branch_o  = branch;
-    assign fe_jump_o    = jump;
-    assign fe_MemRead_o = MemRead;
-    assign fe_MemWrite_o= MemWrite;
-    assign fe_RegWrite_o= RegWrite;
-    assign fe_MemToReg_o= MemToReg;
-
-    // NOTE: fe_ready_i is currently not used to backpressure the FE.
-    // Decode/FETCH backpressure is driven purely by Rename/Dispatch via dec_ready.
+    assign fe_rs1_o      = rs1;
+    assign fe_rs2_o      = rs2;
+    assign fe_rd_o       = rd;
+    assign fe_imm_o      = imm;
+    assign fe_ALUSrc_o   = ALUSrc;
+    assign fe_ALUOp_o    = ALUOp;
+    assign fe_branch_o   = branch;
+    assign fe_jump_o     = jump;
+    assign fe_MemRead_o  = MemRead;
+    assign fe_MemWrite_o = MemWrite;
+    assign fe_RegWrite_o = RegWrite;
+    assign fe_MemToReg_o = MemToReg;
 
 endmodule
