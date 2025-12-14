@@ -95,9 +95,18 @@ module rob #(
                 commit_valid_o      <= 1'b1;
                 commit_old_preg_o   <= rob_array[head_ptr].rd_old_phys;
                 commit_mispredict_o <= rob_array[head_ptr].mispredicted;
-
-                rob_array[head_ptr].valid <= 1'b0; // free slot
+                
+                // Pass the recovery PC (branch target) if needed
+                // You might need to add a 'target_pc' field to your ROB entry struct if not there
+                // For now, let's assume we just flush.
+                
+                // Clear the slot
+                rob_array[head_ptr].valid <= 1'b0;
+                
+                // Advance Head
                 head_ptr <= head_ptr + 1'b1;
+            end else begin
+                commit_valid_o <= 1'b0;
             end
 
             // ----------------------------
