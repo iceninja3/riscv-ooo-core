@@ -46,6 +46,9 @@ module RISCV #(
     logic        commit_mispredict;
     logic [31:0] commit_target_pc_o;
     logic [ROB_TAG_W-1:0] commit_tag_recovery;
+	 logic [ROB_TAG_W-1:0] commit_tag_to_lsu;
+	 logic 					  lsu_flush;
+	  assign lsu_flush = commit_mispredict;
 
     // Redirect to fetch
     logic        redirect_valid;
@@ -123,7 +126,7 @@ module RISCV #(
         .WIDTH(FD_WIDTH)
     ) u_skid_fd (
         .clk       (clk),
-        .reset     (reset),
+        .reset     (reset | commit_mispredict),
         .valid_in  (fetch_valid),
         .ready_in  (fetch_ready),
         .data_in   (fetch_data_in_bits),
@@ -381,28 +384,32 @@ module RISCV #(
             if (sel_lsu && lsu_pend_v) lsu_pend_v <= 1'b0;
             if (sel_br  && br_pend_v ) br_pend_v  <= 1'b0;
 
-            if (alu_cdb_valid && !alu_pend_v && !sel_alu) begin
-                alu_pend_v    <= 1'b1;
-                alu_pend_data <= alu_cdb_data;
-                alu_pend_preg <= alu_cdb_preg;
-                alu_pend_tag  <= alu_cdb_tag;
-            end
 
-            if (lsu_cdb_valid && !lsu_pend_v && !sel_lsu) begin
-                lsu_pend_v    <= 1'b1;
-                lsu_pend_data <= lsu_cdb_data;
-                lsu_pend_preg <= lsu_cdb_preg;
-                lsu_pend_tag  <= lsu_cdb_tag;
-            end
 
-            if (br_valid_o && !br_pend_v && !sel_br) begin
-                br_pend_v        <= 1'b1;
-                br_pend_data     <= br_cdb_data;
-                br_pend_preg     <= br_cdb_preg;
-                br_pend_tag      <= br_rob_tag_o;
-                br_pend_misp     <= br_mispredict_o;
-                br_pend_target_pc<= br_target_addr_o; // ✅ NEW
-            end
+				// 2. Capture new data if FU is valid AND (We lost arbitration OR We are sending buffered data)
+				// Note: If (sel_alu && !alu_pend_v), that means the new data won direct access, so we don't buffer.
+				if (alu_cdb_valid && (!sel_alu || alu_pend_v)) begin
+					 alu_pend_v    <= 1'b1;
+					 alu_pend_data <= alu_cdb_data;
+					 alu_pend_preg <= alu_cdb_preg;
+					 alu_pend_tag  <= alu_cdb_tag;
+				end
+
+            if (lsu_cdb_valid && (!sel_lsu || lsu_pend_v)) begin
+					 lsu_pend_v    <= 1'b1;
+					 lsu_pend_data <= lsu_cdb_data;
+					 lsu_pend_preg <= lsu_cdb_preg;
+					 lsu_pend_tag  <= lsu_cdb_tag;
+				end
+
+            if (br_valid_o && (!sel_br || br_pend_v)) begin
+					 br_pend_v        <= 1'b1;
+					 br_pend_data     <= br_cdb_data;
+					 br_pend_preg     <= br_cdb_preg;
+					 br_pend_tag      <= br_rob_tag_o;
+					 br_pend_misp     <= br_mispredict_o;
+					 br_pend_target_pc<= br_target_addr_o;
+				end
         end
     end
 
@@ -427,7 +434,9 @@ module RISCV #(
         .commit_valid_o          (commit_valid),
         .commit_old_preg_o       (commit_old_preg),
         .commit_mispredict_o     (commit_mispredict),
-        .commit_tag_recovery_o   (commit_tag_recovery)
+        .commit_tag_recovery_o   (commit_tag_recovery),
+		  
+		  .commit_tag_o			   (commit_tag_to_lsu)
     );
 
     // ----------------------------
@@ -511,7 +520,7 @@ module RISCV #(
 
     Dispatch u_dispatch (
         .clk                     (clk),
-        .rst                     (reset),
+        .rst                     (reset | commit_mispredict),
 
         .ren_valid_i             (ren_valid_g), // ✅ gated
         .payload_i               (ren_payload),
@@ -596,9 +605,26 @@ module RISCV #(
     assign prf_raddr_alu_src2 = alu_issue_entry.p_src2;
 
     logic [31:0] alu_op1, alu_op2;
-    assign alu_op1 = prf_rdata_alu_src1;
-    assign alu_op2 = (alu_issue_entry.alu_src) ? alu_issue_entry.imm
-                                               : prf_rdata_alu_src2;
+			 // --- ALU Forwarding Logic ---
+		always_comb begin
+			 // Source 1
+			 if (alu_issue_entry.p_src1 == cdb_preg && cdb_valid && cdb_preg != 0) begin
+				  alu_op1 = cdb_data; // Forward from CDB
+			 end else begin
+				  alu_op1 = prf_rdata_alu_src1; // Read from PRF
+			 end
+
+			 // Source 2 (Handle immediate vs register + forwarding)
+			 if (alu_issue_entry.alu_src) begin
+				  alu_op2 = alu_issue_entry.imm;
+			 end else begin
+				  if (alu_issue_entry.p_src2 == cdb_preg && cdb_valid && cdb_preg != 0) begin
+						alu_op2 = cdb_data; // Forward from CDB
+				  end else begin
+						alu_op2 = prf_rdata_alu_src2; // Read from PRF
+				  end
+			 end
+		end
 
     logic alu_fire;
     assign alu_fire = alu_issue_valid && alu_ready;
@@ -662,12 +688,28 @@ module RISCV #(
     assign prf_raddr_lsu_src2 = lsu_issue_entry.p_src2;
 
     logic [31:0] lsu_base, lsu_imm;
-    assign lsu_base = prf_rdata_lsu_src1;
+   // assign lsu_base = prf_rdata_lsu_src1;
     assign lsu_imm  = lsu_issue_entry.imm;
 
     logic lsu_fire;
     assign lsu_fire = lsu_issue_valid && lsu_ready;
 
+	// --- LSU Forwarding Logic ---
+		logic [31:0] lsu_rs2_forwarded;
+
+		always_comb begin
+			 // Base Address Source
+			 if (lsu_issue_entry.p_src1 == cdb_preg && cdb_valid && cdb_preg != 0)
+				  lsu_base = cdb_data;
+			 else
+				  lsu_base = prf_rdata_lsu_src1;
+
+			 // Store Data Source
+			 if (lsu_issue_entry.p_src2 == cdb_preg && cdb_valid && cdb_preg != 0)
+				  lsu_rs2_forwarded = cdb_data;
+			 else
+				  lsu_rs2_forwarded = prf_rdata_lsu_src2;
+		end
     lsu_unit #(
         .ROB_TAG_W(ROB_TAG_W)
     ) u_lsu (
@@ -680,7 +722,7 @@ module RISCV #(
         .mem_write_i (lsu_issue_entry.mem_write),
 
         .rs1_val_i   (lsu_base),
-        .rs2_val_i   (prf_rdata_lsu_src2),
+        .rs2_val_i   (lsu_rs2_forwarded),
         .imm_i       (lsu_imm),
 
         .rd_p_i      (lsu_issue_entry.p_dst),
@@ -693,7 +735,11 @@ module RISCV #(
         .valid_o     (lsu_cdb_valid),
         .result_o    (lsu_cdb_data),
         .rd_p_o      (lsu_cdb_preg),
-        .rob_tag_o   (lsu_cdb_tag)
+        .rob_tag_o   (lsu_cdb_tag),
+		  
+		  .commit_valid_i (commit_valid),
+		  .commit_tag_i   (commir_tag_to_lsu),
+		  .flush_i		   (lsu_flush)
     );
 
     // ----------------------------
@@ -740,6 +786,23 @@ module RISCV #(
 
     logic br_fire;
     assign br_fire = br_issue_valid && br_ready;
+	 
+	 // --- Branch Unit Forwarding Logic ---
+		logic [31:0] br_op1_forwarded, br_op2_forwarded;
+
+		always_comb begin
+			 // Source 1
+			 if (br_issue_entry.p_src1 == cdb_preg && cdb_valid && cdb_preg != 0)
+				  br_op1_forwarded = cdb_data;
+			 else
+				  br_op1_forwarded = prf_rdata_br_src1;
+
+			 // Source 2
+			 if (br_issue_entry.p_src2 == cdb_preg && cdb_valid && cdb_preg != 0)
+				  br_op2_forwarded = cdb_data;
+			 else
+				  br_op2_forwarded = prf_rdata_br_src2;
+		end
 
     branch_unit #(
         .ROB_TAG_W(ROB_TAG_W)
@@ -750,8 +813,8 @@ module RISCV #(
 
         .pc_i           (br_issue_entry.pc),
         .imm_i          (br_issue_entry.imm),
-        .rs1_val_i      (br_rs1_val),
-        .rs2_val_i      (br_rs2_val),
+        .rs1_val_i      (br_op1_forwarded),
+        .rs2_val_i      (br_op2_forwarded),
 
         .is_branch_i    (br_issue_entry.is_branch),
         .is_jump_i      (br_issue_entry.is_jump),

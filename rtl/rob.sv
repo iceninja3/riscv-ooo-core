@@ -24,6 +24,7 @@ module rob #(
     output logic                commit_valid_o,
     output logic [5:0]          commit_old_preg_o,
     output logic                commit_mispredict_o,
+	 output logic [ROB_TAG_W-1:0] commit_tag_o,
     output logic [ROB_TAG_W-1:0] commit_tag_recovery_o
 );
 
@@ -38,6 +39,7 @@ module rob #(
 
     // Recovery tag (often used as "youngest in-flight tag" / tail snapshot)
     assign commit_tag_recovery_o = tail_ptr;
+	 assign commit_tag_o = head_ptr;
 
     // ----------------------------
     // Single-cycle decisions
