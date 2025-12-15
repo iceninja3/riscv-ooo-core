@@ -39,14 +39,37 @@ module RISCV #(
     localparam int ROB_TAG_W  = $clog2(ROB_DEPTH); // = 4
 
     // ----------------------------
+    // Commit / recovery wires (need early for redirect/gating)
+    // ----------------------------
+    logic        commit_valid;
+    logic [5:0]  commit_old_preg;
+    logic        commit_mispredict;
+    logic [31:0] commit_target_pc_o;
+    logic [ROB_TAG_W-1:0] commit_tag_recovery;
+
+    // Redirect to fetch
+    logic        redirect_valid;
+    logic [31:0] redirect_pc;
+
+    assign redirect_valid = commit_mispredict;
+    assign redirect_pc    = commit_target_pc_o;
+
+    // 1-cycle squash after redirect (recommended if skid buffer has no flush)
+    logic squash_frontend;
+    always_ff @(posedge clk) begin
+        if (reset) squash_frontend <= 1'b0;
+        else       squash_frontend <= commit_mispredict; // squash next cycle
+    end
+
+    // ----------------------------
     // I-Cache <-> Fetch
     // ----------------------------
     logic [ADDR_WIDTH-1:0] icache_addr;
     logic [DATA_WIDTH-1:0] icache_rdata;
-    logic        fetch_valid;
-    logic        fetch_ready;
-    logic [31:0] fetch_pc;
-    logic [31:0] fetch_inst;
+    logic                  fetch_valid;
+    logic                  fetch_ready;
+    logic [31:0]           fetch_pc;
+    logic [31:0]           fetch_inst;
 
     iCache #(
         .ADDR_WIDTH (ADDR_WIDTH),
@@ -62,16 +85,19 @@ module RISCV #(
         .DATA_WIDTH (DATA_WIDTH),
         .RESET_PC   (32'h0000_0000)
     ) u_fetch (
-        .clk          (clk),
-        .reset        (reset),
+        .clk               (clk),
+        .reset             (reset),
 
-        .icache_addr  (icache_addr),
-        .icache_rdata (icache_rdata),
+        .redirect_valid_i  (redirect_valid),
+        .redirect_pc_i     (redirect_pc),
 
-        .valid_o      (fetch_valid),
-        .ready_i      (fetch_ready),
-        .pc_o         (fetch_pc),
-        .inst_o       (fetch_inst)
+        .icache_addr       (icache_addr),
+        .icache_rdata      (icache_rdata),
+
+        .valid_o           (fetch_valid),
+        .ready_i           (fetch_ready),
+        .pc_o              (fetch_pc),
+        .inst_o            (fetch_inst)
     );
 
     // ----------------------------
@@ -105,6 +131,10 @@ module RISCV #(
         .ready_out (dec_ready),
         .data_out  (fetch_data_out_bits)
     );
+
+    // Gate decode->rename validity during/after redirect
+    logic dec_valid_use;
+    assign dec_valid_use = dec_valid && !commit_mispredict && !squash_frontend;
 
     // ----------------------------
     // Decode
@@ -150,11 +180,6 @@ module RISCV #(
     logic [5:0]    rs1_p, rs2_p, rd_new_p, rd_old_p;
     ctrl_payload_t ren_payload;
 
-    logic                  commit_valid;
-    logic [5:0]            commit_old_preg;
-    logic                  commit_mispredict;
-    logic [ROB_TAG_W-1:0]  commit_tag_recovery;
-
     Rename #(
         .N_LOG      (N_LOG),
         .N_PHYS     (N_PHYS),
@@ -164,7 +189,7 @@ module RISCV #(
         .clk                     (clk),
         .rst                     (reset),
 
-        .dec_valid_i             (dec_valid),
+        .dec_valid_i             (dec_valid_use),
         .dec_rs1_i               (rs1),
         .dec_rs2_i               (rs2),
         .dec_rd_i                (rd),
@@ -189,10 +214,14 @@ module RISCV #(
         .rob_commit_free_valid_i (commit_valid),
         .rob_commit_free_preg_i  (commit_old_preg),
 
-        .recover_i               (1'b0)
+        .recover_i               (commit_mispredict)
     );
 
     assign dec_ready = ren_ready;
+
+    // Gate dispatch input on mispredict (prevents wrong-path enqueue)
+    logic ren_valid_g;
+    assign ren_valid_g = ren_valid && !commit_mispredict;
 
     // ----------------------------
     // ROB + CDB
@@ -201,6 +230,10 @@ module RISCV #(
     logic [ROB_TAG_W-1:0] rob_alloc_tag;
     logic                 rob_push;
     rob_entry_t           rob_entry;
+
+    // Gate ROB push on mispredict (belt + suspenders)
+    logic rob_push_to_rob;
+    assign rob_push_to_rob = rob_push && !commit_mispredict;
 
     logic                 alu_cdb_valid;
     logic [31:0]          alu_cdb_data;
@@ -225,6 +258,7 @@ module RISCV #(
     logic [5:0]           cdb_preg;
     logic [ROB_TAG_W-1:0] cdb_rob_tag;
     logic                 cdb_mispredict;
+    logic [31:0]          cdb_target_pc;
 
     // ============================================================
     // 1-entry pending buffers per FU (prevents CDB DROPS)
@@ -244,6 +278,7 @@ module RISCV #(
     logic [5:0]           br_pend_preg;
     logic [ROB_TAG_W-1:0] br_pend_tag;
     logic                 br_pend_misp;
+    logic [31:0]          br_pend_target_pc;   // ✅ NEW: carry target PC through pending buffer
 
     // Effective sources = pending if present else raw
     logic                 alu_src_v;
@@ -261,6 +296,7 @@ module RISCV #(
     logic [5:0]           br_src_preg;
     logic [ROB_TAG_W-1:0] br_src_tag;
     logic                 br_src_misp;
+    logic [31:0]          br_src_target_pc;     // ✅ NEW: effective target PC
 
     logic sel_br, sel_lsu, sel_alu;
 
@@ -276,11 +312,12 @@ module RISCV #(
         lsu_src_preg = lsu_pend_v ? lsu_pend_preg : lsu_cdb_preg;
         lsu_src_tag  = lsu_pend_v ? lsu_pend_tag  : lsu_cdb_tag;
 
-        br_src_v     = br_pend_v  ? 1'b1 : br_valid_o;
-        br_src_data  = br_pend_v  ? br_pend_data : br_cdb_data;
-        br_src_preg  = br_pend_v  ? br_pend_preg : br_cdb_preg;
-        br_src_tag   = br_pend_v  ? br_pend_tag  : br_rob_tag_o;
-        br_src_misp  = br_pend_v  ? br_pend_misp : br_mispredict_o;
+        br_src_v        = br_pend_v ? 1'b1 : br_valid_o;
+        br_src_data     = br_pend_v ? br_pend_data : br_cdb_data;
+        br_src_preg     = br_pend_v ? br_pend_preg : br_cdb_preg;
+        br_src_tag      = br_pend_v ? br_pend_tag  : br_rob_tag_o;
+        br_src_misp     = br_pend_v ? br_pend_misp : br_mispredict_o;
+        br_src_target_pc= br_pend_v ? br_pend_target_pc : br_target_addr_o; // ✅ NEW
     end
 
     // Choose one winner each cycle (priority BR > LSU > ALU)
@@ -301,6 +338,7 @@ module RISCV #(
         cdb_preg       = '0;
         cdb_rob_tag    = '0;
         cdb_mispredict = 1'b0;
+        cdb_target_pc  = '0;
 
         if (sel_br) begin
             cdb_valid      = 1'b1;
@@ -308,18 +346,21 @@ module RISCV #(
             cdb_preg       = br_src_preg;
             cdb_rob_tag    = br_src_tag;
             cdb_mispredict = br_src_misp;
+            cdb_target_pc  = br_src_target_pc;   // ✅ NEW: correct even when pending
         end else if (sel_lsu) begin
             cdb_valid      = 1'b1;
             cdb_data       = lsu_src_data;
             cdb_preg       = lsu_src_preg;
             cdb_rob_tag    = lsu_src_tag;
             cdb_mispredict = 1'b0;
+            cdb_target_pc  = '0;
         end else if (sel_alu) begin
             cdb_valid      = 1'b1;
             cdb_data       = alu_src_data;
             cdb_preg       = alu_src_preg;
             cdb_rob_tag    = alu_src_tag;
             cdb_mispredict = 1'b0;
+            cdb_target_pc  = '0;
         end
     end
 
@@ -329,6 +370,12 @@ module RISCV #(
             alu_pend_v <= 1'b0;
             lsu_pend_v <= 1'b0;
             br_pend_v  <= 1'b0;
+            br_pend_target_pc <= '0;
+        end else if (commit_mispredict) begin
+            alu_pend_v <= 1'b0;
+            lsu_pend_v <= 1'b0;
+            br_pend_v  <= 1'b0;
+            br_pend_target_pc <= '0;
         end else begin
             if (sel_alu && alu_pend_v) alu_pend_v <= 1'b0;
             if (sel_lsu && lsu_pend_v) lsu_pend_v <= 1'b0;
@@ -349,11 +396,12 @@ module RISCV #(
             end
 
             if (br_valid_o && !br_pend_v && !sel_br) begin
-                br_pend_v    <= 1'b1;
-                br_pend_data <= br_cdb_data;
-                br_pend_preg <= br_cdb_preg;
-                br_pend_tag  <= br_rob_tag_o;
-                br_pend_misp <= br_mispredict_o;
+                br_pend_v        <= 1'b1;
+                br_pend_data     <= br_cdb_data;
+                br_pend_preg     <= br_cdb_preg;
+                br_pend_tag      <= br_rob_tag_o;
+                br_pend_misp     <= br_mispredict_o;
+                br_pend_target_pc<= br_target_addr_o; // ✅ NEW
             end
         end
     end
@@ -365,7 +413,7 @@ module RISCV #(
         .clk                     (clk),
         .rst                     (reset),
 
-        .dispatch_valid_i        (rob_push),
+        .dispatch_valid_i        (rob_push_to_rob),   // ✅ gated
         .dispatch_entry_i        (rob_entry),
         .rob_full_o              (rob_full),
         .alloc_tag_o             (rob_alloc_tag),
@@ -373,7 +421,9 @@ module RISCV #(
         .cdb_valid_i             (cdb_valid),
         .cdb_tag_i               (cdb_rob_tag),
         .cdb_mispredict_i        (cdb_mispredict),
+        .cdb_target_pc_i         (cdb_target_pc),
 
+        .commit_target_pc_o      (commit_target_pc_o),
         .commit_valid_o          (commit_valid),
         .commit_old_preg_o       (commit_old_preg),
         .commit_mispredict_o     (commit_mispredict),
@@ -400,6 +450,10 @@ module RISCV #(
     always_ff @(posedge clk) begin
         if (reset) begin
             phys_reg_busy <= '0;
+        end else if (commit_mispredict) begin
+            // If your Rename recovery logic rebuilds busy bits, handle here.
+            // Otherwise leave as-is for now (many student designs do).
+            phys_reg_busy <= phys_reg_busy;
         end else begin
             if (ren_valid && ren_ready && ren_payload.RegWrite) begin
                 phys_reg_busy[rd_new_p] <= 1'b1;
@@ -459,7 +513,7 @@ module RISCV #(
         .clk                     (clk),
         .rst                     (reset),
 
-        .ren_valid_i             (ren_valid),
+        .ren_valid_i             (ren_valid_g), // ✅ gated
         .payload_i               (ren_payload),
         .rs1_p_i                 (rs1_p),
         .rs2_p_i                 (rs2_p),
@@ -546,7 +600,6 @@ module RISCV #(
     assign alu_op2 = (alu_issue_entry.alu_src) ? alu_issue_entry.imm
                                                : prf_rdata_alu_src2;
 
-    // ✅ FIX: only fire ALU when RS is actually issuing (valid && ready)
     logic alu_fire;
     assign alu_fire = alu_issue_valid && alu_ready;
 
@@ -603,7 +656,6 @@ module RISCV #(
 
     assign rs_lsu_ready = !rs_lsu_full;
 
-    // backpressure LSU if it has a pending completion not yet drained
     assign lsu_ready = lsu_ready_unit && !lsu_pend_v;
 
     assign prf_raddr_lsu_src1 = lsu_issue_entry.p_src1;
@@ -613,7 +665,6 @@ module RISCV #(
     assign lsu_base = prf_rdata_lsu_src1;
     assign lsu_imm  = lsu_issue_entry.imm;
 
-    // ✅ FIX: only fire LSU when RS is actually issuing (valid && ready)
     logic lsu_fire;
     assign lsu_fire = lsu_issue_valid && lsu_ready;
 
@@ -678,7 +729,6 @@ module RISCV #(
 
     assign rs_branch_ready = !rs_branch_full;
 
-    // backpressure BR if it already has a pending completion
     assign br_ready        = !br_pend_v;
 
     assign prf_raddr_br_src1 = br_issue_entry.p_src1;
@@ -688,7 +738,6 @@ module RISCV #(
     assign br_rs1_val = prf_rdata_br_src1;
     assign br_rs2_val = prf_rdata_br_src2;
 
-    // ✅ FIX: only fire BR when RS is actually issuing (valid && ready)
     logic br_fire;
     assign br_fire = br_issue_valid && br_ready;
 
@@ -724,7 +773,7 @@ module RISCV #(
     // ----------------------------
     // Front-end outputs (still from Decode)
     // ----------------------------
-    assign fe_valid_o    = dec_valid;
+    assign fe_valid_o    = dec_valid_use;
     assign fe_pc_o       = fetch_data_out.pc;
 
     assign fe_rs1_o      = rs1;
