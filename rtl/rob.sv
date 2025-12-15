@@ -92,21 +92,38 @@ module rob #(
             // 2) Commit head (uses OLD head_ptr)
             // ----------------------------
             if (do_commit) begin
-                commit_valid_o      <= 1'b1;
-                commit_old_preg_o   <= rob_array[head_ptr].rd_old_phys;
-                commit_mispredict_o <= rob_array[head_ptr].mispredicted;
-                
-                // Pass the recovery PC (branch target) if needed
-                // You might need to add a 'target_pc' field to your ROB entry struct if not there
-                // For now, let's assume we just flush.
-                
-                // Clear the slot
-                rob_array[head_ptr].valid <= 1'b0;
-                
-                // Advance Head
-                head_ptr <= head_ptr + 1'b1;
-            end else begin
-                commit_valid_o <= 1'b0;
+                // Check for Misprediction (The "Big Flush")
+                if (rob_array[head_ptr].mispredicted) begin
+                    // 1. Assert Flush Output
+                    commit_mispredict_o <= 1'b1;
+                    
+                    // 2. Output the Correct Target (saved from CDB earlier)
+                    // Note: Ensure you added 'target_pc' to your rob_entry_t struct!
+                    // If you haven't, you can't redirect Fetch. 
+                    // (See code block below for the fix).
+                    
+                    // 3. FLUSH THE ROB (Reset pointers)
+                    head_ptr <= '0;
+                    tail_ptr <= '0;
+                    count    <= '0;
+                    
+                    // Nuke all valid bits
+                    for (int i=0; i<ROB_DEPTH; i++) rob_array[i].valid <= 1'b0;
+                    
+                end else begin
+                    // Normal Commit (Retire)
+                    commit_valid_o      <= 1'b1;
+                    commit_old_preg_o   <= rob_array[head_ptr].rd_old_phys;
+                    commit_mispredict_o <= 1'b0;
+
+                    rob_array[head_ptr].valid <= 1'b0;
+                    head_ptr <= head_ptr + 1'b1;
+                    count    <= count - 1'b1;
+                end
+            end 
+            else begin
+                commit_valid_o      <= 1'b0;
+                commit_mispredict_o <= 1'b0;
             end
 
             // ----------------------------
