@@ -6,28 +6,32 @@ module Fetch #(
     input  logic                  clk,
     input  logic                  reset,
 
+    input  logic                  redirect_valid_i,
+    input  logic [31:0]           redirect_pc_i,
+
     output logic [ADDR_WIDTH-1:0] icache_addr,
-    input  logic [DATA_WIDTH-1:0] icache_rdata, 
+    input  logic [DATA_WIDTH-1:0] icache_rdata,
 
     output logic                  valid_o,
     input  logic                  ready_i,
     output logic [31:0]           pc_o,
     output logic [DATA_WIDTH-1:0] inst_o
 );
-    logic [31:0] pc_req;      // Next PC (Address to Cache)
-    logic [31:0] pc_delayed;  // PC waiting for Cache Data
-    logic [31:0] pc_reg;      // Output PC (Matched with Inst)
+
+    logic [31:0] pc_req;       // address being requested *this* cycle
+    logic [31:0] pc_delayed;   // address requested *last* cycle (matches icache_rdata)
+    logic [31:0] pc_reg;
     logic [DATA_WIDTH-1:0] inst_reg;
 
-    // Address to ICache (Comb)
+    logic valid_warmup;
+
     assign icache_addr = pc_req[ADDR_WIDTH+1:2];
-    
-    // Outputs
+
     assign pc_o   = pc_reg;
     assign inst_o = inst_reg;
 
-    // Startup counter to prevent outputting garbage on first cycle
-    logic valid_warmup; 
+    // "advance" means we accept / present a new fetch packet
+    wire adv = (ready_i || !valid_o);
 
     always_ff @(posedge clk) begin
         if (reset) begin
@@ -37,25 +41,30 @@ module Fetch #(
             inst_reg     <= '0;
             valid_o      <= 1'b0;
             valid_warmup <= 1'b0;
-        end 
-        else begin
-            // Stall logic: Only advance if downstream is ready or we aren't valid yet
-            if (ready_i || !valid_o) begin
-                
-                // 1. Capture Data coming back from Cache (Latency = 1)
+        end else begin
+            // Highest priority: redirect/flush
+            if (redirect_valid_i) begin
+                pc_req       <= redirect_pc_i;
+                pc_delayed   <= redirect_pc_i;
+
+                // flush current output; wait 1 cycle for new icache_rdata
+                valid_o      <= 1'b0;
+                valid_warmup <= 1'b0;
+            end
+            else if (adv) begin
+                // Capture returning data (from last cycle request)
                 inst_reg <= icache_rdata;
+                pc_reg   <= pc_delayed;
 
-                // 2. Capture the PC that matches this data 
-                pc_reg   <= pc_req;
+                // advance pipeline of PCs
+                pc_delayed <= pc_req;
+                pc_req     <= pc_req + 32'd4;
 
-                // 3. Advance the Pipeline
-                pc_delayed   <= pc_req;       // Save current PC for next cycle
-                pc_req       <= pc_req + 32'd4; // Calculate Next PC
-
-                // 4. Validity Logic (Wait 1 cycle for BRAM fill)
-                valid_warmup <= 1'b1;         
-                valid_o      <= valid_warmup; // valid_o goes high only after 1 cycle
+                // warmup: first returned word after reset/redirect is not valid until next cycle
+                valid_warmup <= 1'b1;
+                valid_o      <= valid_warmup;
             end
         end
     end
+
 endmodule
