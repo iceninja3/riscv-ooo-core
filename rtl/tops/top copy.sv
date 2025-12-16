@@ -47,10 +47,6 @@ module RISCV #(
     logic        fetch_ready;
     logic [31:0] fetch_pc;
     logic [31:0] fetch_inst;
-	 logic redirect_valid;
-	 logic [31:0] redirect_pc;
-	 
-	 
 
     iCache #(
         .ADDR_WIDTH (ADDR_WIDTH),
@@ -69,9 +65,6 @@ module RISCV #(
         .clk          (clk),
         .reset        (reset),
 
-		  .redirect_valid_i (redirect_valid),
-		  .redirect_pc_i    (redirect_pc),
-		  
         .icache_addr  (icache_addr),
         .icache_rdata (icache_rdata),
 
@@ -114,9 +107,6 @@ module RISCV #(
         .valid_out (dec_valid),
         .ready_out (dec_ready),
         .data_out  (fetch_data_out_bits)
-
-        // [ADD THIS LINE]
-        .flush_i   (flush_pipeline)
     );
 
     // ----------------------------
@@ -186,8 +176,6 @@ module RISCV #(
         .dec_rs2_used_i          (rs2_valid),
         .dec_rd_used_i           (RegWrite),
         .dec_is_branch_i         (branch),
-		  
-		  .dec_is_jump_i				(jump),
 
         .payload_i               (dec_payload),
         .payload_o               (ren_payload),
@@ -205,7 +193,7 @@ module RISCV #(
         .rob_commit_free_valid_i (commit_valid),
         .rob_commit_free_preg_i  (commit_old_preg),
 
-        .recover_i               (flush_pipeline) // hook this up to commit_mispredict later
+        .recover_i               (1'b0) // hook this up to commit_mispredict later
     );
 
     // Decode ready comes from Rename/Dispatch
@@ -219,8 +207,6 @@ module RISCV #(
     logic                 rob_push;
     rob_entry_t           rob_entry;
 
-    logic [31:0]          br_result_o;    // New: Data output (PC+4)
-    logic [5:0]           br_dest_preg;   // New: Destination Physical Reg
     // CDB from FUs
     logic                 alu_cdb_valid;
     logic [31:0]          alu_cdb_data;
@@ -245,17 +231,6 @@ module RISCV #(
     logic [ROB_TAG_W-1:0] cdb_rob_tag;
     logic                 cdb_mispredict;
 
-    // [NEW/UPDATED CODE]
-    // 1. Define the flush signal
-    logic flush_pipeline; 
-    // 2. The trigger logic: If we have a valid misprediction, we flush and redirect.
-    // This matches Redirect Logic (Fix 3)
-    assign flush_pipeline = br_valid_o && br_mispredict_o;
-    assign redirect_valid = flush_pipeline; 
-    // 3. 
-    assign redirect_pc    = br_target_addr_o;
-
-
     // Simple priority: Branch > LSU > ALU
     always_comb begin
         // defaults
@@ -269,8 +244,6 @@ module RISCV #(
             cdb_valid      = 1'b1;
             cdb_rob_tag    = br_rob_tag_o;
             cdb_mispredict = br_mispredict_o;
-				cdb_data       = br_result_o;
-				cdb_preg       = br_dest_preg;
         end
         else if (lsu_cdb_valid) begin
             cdb_valid      = 1'b1;
@@ -324,32 +297,31 @@ module RISCV #(
     logic        prf_wen;
     logic [5:0]  prf_waddr;
     logic [31:0] prf_wdata;
-// ----------------------------
 // Scoreboard / Busy Vector
-// ----------------------------
-logic [N_PHYS-1:0] phys_reg_busy;
+    // ----------------------------
+    logic [N_PHYS-1:0] phys_reg_busy;
 
-always_ff @(posedge clk) begin
-  if (reset) begin
-    phys_reg_busy <= '0;
-  end else begin
-    // Set busy ONLY for real register-writing instructions, and never for P0
-    if (ren_valid && ren_ready && ren_payload.RegWrite && (rd_new_p != 6'd0)) begin
-      phys_reg_busy[rd_new_p] <= 1'b1;
-    end
+    always_ff @(posedge clk) begin
+        if (reset) begin
+            phys_reg_busy <= '0;
+        end else begin
+            // 1. Set Busy when we Dispatch a new destination
+            if (ren_valid && ren_ready) begin
+                phys_reg_busy[rd_new_p] <= 1'b1;
+            end
 
-    // Clear busy ONLY for real PRF destinations (never P0)
-    if (cdb_valid && (cdb_preg != 6'd0)) begin
-      phys_reg_busy[cdb_preg] <= 1'b0;
-    end
+            // 2. Clear Busy when CDB broadcasts a result
+            if (cdb_valid) begin
+                phys_reg_busy[cdb_preg] <= 1'b0;
+            end
 
-    // If same-cycle allocate+writeback to same preg, keep it busy
-    if (ren_valid && ren_ready && ren_payload.RegWrite &&
-        cdb_valid && (rd_new_p == cdb_preg) && (rd_new_p != 6'd0)) begin
-      phys_reg_busy[rd_new_p] <= 1'b1;
+            // Corner Case: If Dispatch and CDB happen to same register same cycle, 
+            // Dispatch (New Instruction) wins and keeps it busy.
+            if (ren_valid && ren_ready && cdb_valid && (rd_new_p == cdb_preg)) begin
+                phys_reg_busy[rd_new_p] <= 1'b1;
+            end
+        end
     end
-  end
-end
     physical_reg_file #(
         .DATA_WIDTH (32),
         .NUM_REGS   (N_PHYS),
@@ -429,9 +401,6 @@ end
         .dispatch_lsu_valid_o    (dispatch_lsu_valid),
         .dispatch_branch_valid_o (dispatch_branch_valid),
         .issue_pkt_o             (issue_pkt)
-
-        // [ADD THIS LINE]
-        .flush_i                 (flush_pipeline)
     );
 
     // ----------------------------
@@ -577,9 +546,9 @@ end
 
 		 // handshake / outputs
 		 .ready_o     (lsu_ready),
-
 		 .valid_o     (lsu_cdb_valid),
 		 .result_o    (lsu_cdb_data),
+         
 		 .rd_p_o      (lsu_cdb_preg),
 		 .rob_tag_o   (lsu_cdb_tag)
 	);	
@@ -638,18 +607,13 @@ end
         .is_jump_i      (br_issue_entry.is_jump),
         .pred_taken_i   (1'b0),               // static not-taken for now
         .rob_tag_i      (br_issue_entry.rob_tag),
-		  
-		  .rd_p_i         (br_issue_entry.p_dst),
 
         .valid_o        (br_valid_o),
         .rob_tag_o      (br_rob_tag_o),
         .mispredict_o   (br_mispredict_o),
         .target_addr_o  (br_target_addr_o),
-        .actual_taken_o (br_taken_o),
-		  
-		  .result_o 		(br_result_o),
-		  .rd_p_o			(br_dest_preg)	
-    );	
+        .actual_taken_o (br_taken_o)
+    );
 
     // ----------------------------
     // Front-end outputs (still from Decode)

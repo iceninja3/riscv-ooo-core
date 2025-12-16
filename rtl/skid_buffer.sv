@@ -3,6 +3,7 @@ module skid_buffer_struct #(
 ) (
     input logic clk,
     input logic reset,
+    input logic flush_i,
 
     // upstream (producer -> skid)
     input logic valid_in,
@@ -13,6 +14,7 @@ module skid_buffer_struct #(
     output logic valid_out,
     input logic ready_out,
     output logic [WIDTH-1:0]     data_out
+    
 );
 
 typedef logic [WIDTH-1:0] T;
@@ -52,6 +54,10 @@ typedef logic [WIDTH-1:0] T;
             // On reset, the buffer is empty.
             occupied_ff <= 1'b0;
             // The data register can be uninitialized, as it's only valid when occupied_ff is high.
+        end else if (flush_i) begin
+            // [ADD THIS LOGIC]
+            // Immediate kill: If flushing, we are empty next cycle.
+            occupied_ff <= 1'b0; 
         end else begin
             // Data reg only needs to update when producer is sending data
             if (upstream_transfer) begin

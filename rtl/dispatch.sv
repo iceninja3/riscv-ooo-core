@@ -1,6 +1,7 @@
 module Dispatch (
     input logic clk,
     input logic rst,
+    input logic flush_i,
 
     // --- Inputs from Rename ---
     input logic                      ren_valid_i,
@@ -52,6 +53,10 @@ module Dispatch (
         if (rst) begin
             buff_valid <= 1'b0;
             // Clear payloads (optional)
+        end else if (flush_i) begin
+            // [ADD THIS LOGIC]
+            // Kill the instruction currently sitting in dispatch
+            buff_valid <= 1'b0;
         end else begin
             if (buffer_accept) begin
                 buff_valid     <= ren_valid_i; // If rename is valid, we become valid
