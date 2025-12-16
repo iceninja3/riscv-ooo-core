@@ -47,9 +47,8 @@ module branch_unit #(
                 rob_tag_o      <= rob_tag_i;
                 target_addr_o  <= target;
                 actual_taken_o <= taken;
-
-                // For now: assume static NOT-TAKEN prediction (pred_taken_i == 0)
-                mispredict_o   <= (taken != 1'b0);
+                mispredict_o   <= (taken != 1'b0);  // For now: assume static NOT-TAKEN prediction (pred_taken_i == 0)
+                
             end
         end
     end

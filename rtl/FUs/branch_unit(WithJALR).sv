@@ -89,7 +89,12 @@ module branch_unit #(
                 end else begin
                     result_o <= 32'd0;
                     rd_p_o   <= 6'd0;         // BNE must NOT write to PRF
-                end
+                end else begin
+                // [ADD THIS ELSE BLOCK] 
+                // Clear signals when no valid instruction is present
+                mispredict_o <= 1'b0;
+                // Optional: clear others for clean waveforms
+            end
                 
             end
         end
