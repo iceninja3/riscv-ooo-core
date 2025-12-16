@@ -16,6 +16,7 @@ module Rename #(
   input  logic                      dec_rs2_used_i,
   input  logic                      dec_rd_used_i,
   input  logic                      dec_is_branch_i,
+  input  logic                      dec_is_jump_i,     // <--- NEW INPUT
 
   input  pipeline_types::ctrl_payload_t payload_i,
   output pipeline_types::ctrl_payload_t payload_o,
@@ -40,9 +41,7 @@ module Rename #(
   input  logic                      recover_i
 );
 
-
-  // declarations for quartus
-
+  // declarations
   int i;
   int idx;
 
@@ -58,8 +57,7 @@ module Rename #(
   logic [FL_W-1:0] fl_tail;
   int              fl_count;
 
-  logic [ROB_TAG_W-1:0] rob_tag_q;
-
+  logic [ROB_TAG_W-1:0]      rob_tag_q;
   logic [$clog2(N_PHYS)-1:0] map_ckpt      [N_CHECKPTS][N_LOG];
   logic [FL_W-1:0]           fl_head_ckpt  [N_CHECKPTS];
   logic [FL_W-1:0]           fl_tail_ckpt  [N_CHECKPTS];
@@ -73,18 +71,19 @@ module Rename #(
   logic [ROB_TAG_W-1:0]      rob_tag_out_q;
 
   assign ren_valid_o = out_valid_q;
-  assign rs1_p_o = rs1_p_q;
-  assign rs2_p_o = rs2_p_q;
-  assign rd_new_p_o = rd_new_p_q;
-  assign rd_old_p_o = rd_old_p_q;
+  assign rs1_p_o     = rs1_p_q;
+  assign rs2_p_o     = rs2_p_q;
+  assign rd_new_p_o  = rd_new_p_q;
+  assign rd_old_p_o  = rd_old_p_q;
   assign rob_tag_o   = rob_tag_out_q;
 
   logic need_alloc;
   assign need_alloc = dec_valid_i && dec_rd_used_i && (dec_rd_i != X0_LOG);
 
   logic resources_ok;
+  // <--- FIXED: Check checkpoints for Jumps too
   assign resources_ok = ((!need_alloc) || (fl_count > 0))
-                        && (!dec_is_branch_i || ckpt_sp < N_CHECKPTS);
+                        && (!(dec_is_branch_i || dec_is_jump_i) || ckpt_sp < N_CHECKPTS);
 
   logic stage_ready_for_decode;
   assign stage_ready_for_decode = (!out_valid_q) || ren_ready_i;
@@ -135,7 +134,6 @@ module Rename #(
       if (recover_i && ckpt_sp > 0) begin
 
         idx = ckpt_sp - 1;
-
         ckpt_sp <= ckpt_sp - 1;
 
         for (i = 0; i < N_LOG; i++)
@@ -158,7 +156,6 @@ module Rename #(
 
           rs1_p_q <= dec_rs1_used_i ? map_table[dec_rs1_i] : '0;
           rs2_p_q <= dec_rs2_used_i ? map_table[dec_rs2_i] : '0;
-
           rd_old_p_q <= dec_rd_used_i ? map_table[dec_rd_i] : '0;
 
           if (need_alloc) begin
@@ -173,13 +170,13 @@ module Rename #(
           rob_tag_out_q <= rob_tag_q;
           rob_tag_q     <= rob_tag_q + 1;
 
-          // checkpoint
-          if (dec_is_branch_i && ckpt_sp < N_CHECKPTS) begin
+          // Checkpoint Creation
+          // <--- FIXED: Create snapshot for Jumps too
+          if ((dec_is_branch_i || dec_is_jump_i) && ckpt_sp < N_CHECKPTS) begin
             idx = ckpt_sp;
-
             for (i = 0; i < N_LOG; i++)
               map_ckpt[idx][i] = map_table[i];
-
+            
             fl_head_ckpt[idx]  = fl_head;
             fl_tail_ckpt[idx]  = fl_tail;
             fl_count_ckpt[idx] = fl_count;

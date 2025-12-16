@@ -183,6 +183,8 @@ module RISCV #(
         .dec_rs2_used_i          (rs2_valid),
         .dec_rd_used_i           (RegWrite),
         .dec_is_branch_i         (branch),
+		  
+		  .dec_is_jump_i				(jump),
 
         .payload_i               (dec_payload),
         .payload_o               (ren_payload),
