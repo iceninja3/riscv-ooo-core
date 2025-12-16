@@ -47,6 +47,10 @@ module RISCV #(
     logic        fetch_ready;
     logic [31:0] fetch_pc;
     logic [31:0] fetch_inst;
+	 logic redirect_valid;
+	 logic [31:0] redirect_pc;
+	 
+	 
 
     iCache #(
         .ADDR_WIDTH (ADDR_WIDTH),
@@ -65,6 +69,9 @@ module RISCV #(
         .clk          (clk),
         .reset        (reset),
 
+		  .redirect_valid_i (redirect_valid),
+		  .redirect_pc_i    (redirect_pc),
+		  
         .icache_addr  (icache_addr),
         .icache_rdata (icache_rdata),
 
@@ -207,6 +214,8 @@ module RISCV #(
     logic                 rob_push;
     rob_entry_t           rob_entry;
 
+    logic [31:0]          br_result_o;    // New: Data output (PC+4)
+    logic [5:0]           br_dest_preg;   // New: Destination Physical Reg
     // CDB from FUs
     logic                 alu_cdb_valid;
     logic [31:0]          alu_cdb_data;
@@ -230,6 +239,9 @@ module RISCV #(
     logic [5:0]           cdb_preg;
     logic [ROB_TAG_W-1:0] cdb_rob_tag;
     logic                 cdb_mispredict;
+	 
+	 assign redirect_valid = br_valid_o && br_taken_o;
+	 assign redirect_pc = br_target_addr_o;
 
     // Simple priority: Branch > LSU > ALU
     always_comb begin
@@ -244,6 +256,8 @@ module RISCV #(
             cdb_valid      = 1'b1;
             cdb_rob_tag    = br_rob_tag_o;
             cdb_mispredict = br_mispredict_o;
+				cdb_data       = br_result_o;
+				cdb_preg       = br_dest_preg;
         end
         else if (lsu_cdb_valid) begin
             cdb_valid      = 1'b1;
@@ -608,13 +622,18 @@ end
         .is_jump_i      (br_issue_entry.is_jump),
         .pred_taken_i   (1'b0),               // static not-taken for now
         .rob_tag_i      (br_issue_entry.rob_tag),
+		  
+		  .rd_p_i         (br_issue_entry.p_dst),
 
         .valid_o        (br_valid_o),
         .rob_tag_o      (br_rob_tag_o),
         .mispredict_o   (br_mispredict_o),
         .target_addr_o  (br_target_addr_o),
-        .actual_taken_o (br_taken_o)
-    );
+        .actual_taken_o (br_taken_o),
+		  
+		  .result_o 		(br_result_o),
+		  .rd_p_o			(br_dest_preg)	
+    );	
 
     // ----------------------------
     // Front-end outputs (still from Decode)
