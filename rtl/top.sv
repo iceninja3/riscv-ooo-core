@@ -297,31 +297,32 @@ module RISCV #(
     logic        prf_wen;
     logic [5:0]  prf_waddr;
     logic [31:0] prf_wdata;
+// ----------------------------
 // Scoreboard / Busy Vector
-    // ----------------------------
-    logic [N_PHYS-1:0] phys_reg_busy;
+// ----------------------------
+logic [N_PHYS-1:0] phys_reg_busy;
 
-    always_ff @(posedge clk) begin
-        if (reset) begin
-            phys_reg_busy <= '0;
-        end else begin
-            // 1. Set Busy when we Dispatch a new destination
-            if (ren_valid && ren_ready) begin
-                phys_reg_busy[rd_new_p] <= 1'b1;
-            end
-
-            // 2. Clear Busy when CDB broadcasts a result
-            if (cdb_valid) begin
-                phys_reg_busy[cdb_preg] <= 1'b0;
-            end
-
-            // Corner Case: If Dispatch and CDB happen to same register same cycle, 
-            // Dispatch (New Instruction) wins and keeps it busy.
-            if (ren_valid && ren_ready && cdb_valid && (rd_new_p == cdb_preg)) begin
-                phys_reg_busy[rd_new_p] <= 1'b1;
-            end
-        end
+always_ff @(posedge clk) begin
+  if (reset) begin
+    phys_reg_busy <= '0;
+  end else begin
+    // Set busy ONLY for real register-writing instructions, and never for P0
+    if (ren_valid && ren_ready && ren_payload.RegWrite && (rd_new_p != 6'd0)) begin
+      phys_reg_busy[rd_new_p] <= 1'b1;
     end
+
+    // Clear busy ONLY for real PRF destinations (never P0)
+    if (cdb_valid && (cdb_preg != 6'd0)) begin
+      phys_reg_busy[cdb_preg] <= 1'b0;
+    end
+
+    // If same-cycle allocate+writeback to same preg, keep it busy
+    if (ren_valid && ren_ready && ren_payload.RegWrite &&
+        cdb_valid && (rd_new_p == cdb_preg) && (rd_new_p != 6'd0)) begin
+      phys_reg_busy[rd_new_p] <= 1'b1;
+    end
+  end
+end
     physical_reg_file #(
         .DATA_WIDTH (32),
         .NUM_REGS   (N_PHYS),
