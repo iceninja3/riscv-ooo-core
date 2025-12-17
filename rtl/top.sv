@@ -269,8 +269,8 @@ module RISCV #(
             cdb_valid      = 1'b1;
             cdb_rob_tag    = br_rob_tag_o;
             cdb_mispredict = br_mispredict_o;
-				cdb_data       = br_result_o;
-				cdb_preg       = br_dest_preg;
+			cdb_data       = br_result_o;
+			cdb_preg       = br_dest_preg;
         end
         else if (lsu_cdb_valid) begin
             cdb_valid      = 1'b1;
@@ -294,6 +294,8 @@ module RISCV #(
     ) u_rob (
         .clk                     (clk),
         .rst                     (reset),
+        .flush_i                 (flush_pipeline),
+        .flush_tag_i             (br_rob_tag_o),
 
         .dispatch_valid_i        (rob_push),
         .dispatch_entry_i        (rob_entry),
@@ -450,6 +452,7 @@ end
     ) u_rs_alu (
         .clk                  (clk),
         .reset                (reset),
+        .flush_i                (flush_pipeline),
 
         .write_en             (dispatch_alu_valid),
         .write_data           (issue_pkt),
@@ -493,6 +496,36 @@ end
                  alu_issue_entry.alu_op);
     end
 	end
+    
+    // Debug prints
+    always_ff @(posedge clk) begin
+    if (dispatch_branch_valid) begin
+        $display("[DISPATCH-BR] t=%0t pc=%08h rob_tag=%0d", 
+                 $time, issue_pkt.pc, issue_pkt.rob_tag);
+    end
+
+    // In top.sv, where you instantiate the branch unit:
+    always_ff @(posedge clk) begin
+        if (br_issue_valid) begin
+            $display("[BRANCH-ISSUE] t=%0t pc=%08h rob_tag=%0d is_branch=%0d is_jump=%0d",
+                    $time, br_issue_entry.pc, br_issue_entry.rob_tag,
+                    br_issue_entry.is_branch, br_issue_entry.is_jump);
+        end
+        
+        if (br_valid_o) begin
+            $display("[BRANCH-RESULT] t=%0t pc=%08h rob_tag=%0d mispredict=%0d target=%08h",
+                    $time, br_issue_entry.pc, br_rob_tag_o, br_mispredict_o, br_target_addr_o);
+        end
+    end
+        
+    always @(posedge clk) begin
+        if (flush_pipeline) begin
+            $display("[FLUSH] t=%0t Redirect to %08h", 
+                    $time, redirect_pc);
+        end
+    end
+
+end
 
     alu_unit #(
         .ROB_TAG_W(ROB_TAG_W)
@@ -524,6 +557,7 @@ end
     ) u_rs_lsu (
         .clk                  (clk),
         .reset                (reset),
+        .flush_i                (flush_pipeline),
 
         .write_en             (dispatch_lsu_valid),
         .write_data           (issue_pkt),
@@ -596,6 +630,7 @@ end
     ) u_rs_branch (
         .clk                  (clk),
         .reset                (reset),
+        .flush_i                (flush_pipeline),
 
         .write_en             (dispatch_branch_valid),
         .write_data           (issue_pkt),

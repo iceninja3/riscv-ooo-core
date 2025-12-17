@@ -5,6 +5,8 @@ module rob #(
 )(
     input  logic clk,
     input  logic rst,
+    input logic flush_i,
+    input logic [ROB_TAG_W-1:0] flush_tag_i, // Connect this to 'br_rob_tag_o' in top.sv
 
     // --- Interface with Dispatch ---
     input  logic dispatch_valid_i,
@@ -43,7 +45,23 @@ module rob #(
             tail_ptr <= '0;
             count    <= '0;
             commit_valid_o <= 1'b0;
-            // Clear valid bits in array...
+            for (int i = 0; i < ROB_DEPTH; i++) begin
+                rob_array[i].valid <= 1'b0;
+            end
+            // Clear valid bits in array
+        end else if (flush_i) begin
+            tail_ptr <= flush_tag_i + 1'b1;
+            count <= (flush_tag_i + 1'b1) - head_ptr;
+            for (int i = 0; i < ROB_DEPTH; i++) begin
+                    // if index is after flush tag, kill it
+                    if (flush_tag_i < tail_ptr) begin
+                        if (i > flush_tag_i && i < tail_ptr) rob_array[i].valid <= 1'b0;
+                    end else begin // Wrap around case
+                        if (i > flush_tag_i || i < tail_ptr) rob_array[i].valid <= 1'b0;
+                    end
+                end
+            commit_valid_o <= 1'b0;
+            
         end else begin
             
             // --- 1. COMMIT LOGIC (Head) ---

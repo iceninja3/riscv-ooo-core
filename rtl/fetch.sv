@@ -12,6 +12,7 @@ module Fetch #(
 
     output logic [ADDR_WIDTH-1:0] icache_addr,
     input  logic [DATA_WIDTH-1:0] icache_rdata,
+    
 
     output logic                  valid_o,
     input  logic                  ready_i,
@@ -22,6 +23,7 @@ module Fetch #(
     logic [31:0] pc_reg;
     logic [DATA_WIDTH-1:0] inst_reg;
     logic valid_warmup;
+    logic [31:0] pc_next_stage; // [NEW] Pipeline register for PC
 
     assign icache_addr = pc_req[ADDR_WIDTH+1:2];
     assign pc_o   = pc_reg;
@@ -30,6 +32,7 @@ module Fetch #(
     always_ff @(posedge clk) begin
         if (reset) begin
             pc_req       <= RESET_PC;
+            pc_next_stage <= RESET_PC; // [NEW]
             pc_reg       <= '0;
             inst_reg     <= '0;
             valid_o      <= 1'b0;
@@ -41,9 +44,15 @@ module Fetch #(
                 valid_o      <= 1'b0;     // squash 1-cycle garbage after redirect
                 valid_warmup <= 1'b0;
             end else if (ready_i || !valid_o) begin
+                // 1. Send Request (Address Phase)
+                pc_req <= pc_req + 32'd4;
+                
+                // 2. Pipeline the PC (Wait for Data Phase)
+                pc_next_stage <= pc_req; 
+                
+                // 3. Capture Data and aligned PC (Writeback Phase)
                 inst_reg <= icache_rdata;
-                pc_reg   <= pc_req;
-                pc_req   <= pc_req + 32'd4;
+                pc_reg   <= pc_next_stage;
 
                 valid_warmup <= 1'b1;
                 valid_o      <= valid_warmup;
