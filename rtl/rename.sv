@@ -17,6 +17,7 @@ module Rename #(
   input  logic                      dec_rd_used_i,
   input  logic                      dec_is_branch_i,
   input  logic                      dec_is_jump_i,     // <--- NEW INPUT
+  input  logic [4:0] 					rob_count_i,
 
   input  pipeline_types::ctrl_payload_t payload_i,
   output pipeline_types::ctrl_payload_t payload_o,
@@ -155,6 +156,13 @@ module Rename #(
           out_valid_q <= 0;
 
         if (accept_decode) begin
+
+          $display("[RENAME] t=%0t PC=%h Inst=%h | Mapping: rs1(x%0d)->P%0d  rs2(x%0d)->P%0d  rd(x%0d)->P%0d (Old: P%0d)",
+             $time, payload_i.pc, payload_i.inst,
+             dec_rs1_i, rs1_p_q, 
+             dec_rs2_i, rs2_p_q,
+             dec_rd_i, rd_new_p_q, rd_old_p_q);
+             
           payload_o <= payload_i;
 
           rs1_p_q <= dec_rs1_used_i ? map_table[dec_rs1_i] : '0;

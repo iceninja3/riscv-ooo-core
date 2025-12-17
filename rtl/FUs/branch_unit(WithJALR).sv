@@ -95,4 +95,3 @@ module branch_unit #(
         end
     end
 endmodule
-

@@ -51,6 +51,7 @@ package pipeline_types;
         logic        is_branch;     // Is this a branch?
         logic        mispredicted;  // Did this branch mispredict?
         logic [31:0] pc;            // PC for exception/recovery
+		  logic [31:0] target_pc;
     } rob_entry_t; // for ROB
 
     // ----------------------------------------

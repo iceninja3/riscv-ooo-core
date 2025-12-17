@@ -61,6 +61,11 @@ module rob #(
                     end
                 end
             commit_valid_o <= 1'b0;
+
+            // Inside the else if (flush_i) block:
+            $display("[ROB-FLUSH] t=%0t Flush Tag=%0d. Moving Tail from %0d to %0d. Cleared Valid bits?", 
+                    $time, flush_tag_i, tail_ptr, flush_tag_i + 1);
+            // debug print to Confirm that when a branch mispredicts, the ROB tail moves back correctly and invalidates future instructions.
             
         end else begin
             
@@ -95,6 +100,8 @@ module rob #(
             // --- 3. WRITEBACK / COMPLETION LOGIC ---
             // Execution unit says "Tag X finished"
             if (cdb_valid_i) begin
+                $display("[CDB] t=%0t Tag %0d Completed! (Data=%h)", $time, cdb_tag_i, cdb_valid_i); // Add data input to ROB for debug if needed
+                
                 rob_array[cdb_tag_i].done <= 1'b1;
                 if (cdb_mispredict_i) begin
                    rob_array[cdb_tag_i].mispredicted <= 1'b1;
