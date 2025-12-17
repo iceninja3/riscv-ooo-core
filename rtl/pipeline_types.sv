@@ -49,6 +49,7 @@ package pipeline_types;
         logic [5:0]  rd_phys;       // New physical destination (p32...)
         logic [5:0]  rd_old_phys;   // Old physical destination (stale p5...) to free
         logic        is_branch;     // Is this a branch?
+        logic        is_jump; // is it a jump instruction
         logic        mispredicted;  // Did this branch mispredict?
         logic [31:0] pc;            // PC for exception/recovery
     } rob_entry_t; // for ROB

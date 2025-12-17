@@ -7,6 +7,7 @@ module rob #(
     input  logic rst,
     input logic flush_i,
     input logic [ROB_TAG_W-1:0] flush_tag_i, // Connect this to 'br_rob_tag_o' in top.sv
+    
 
     // --- Interface with Dispatch ---
     input  logic dispatch_valid_i,
@@ -24,7 +25,8 @@ module rob #(
     output logic commit_valid_o,          // "Instruction retired!"
     output logic [5:0] commit_old_preg_o, // "Free this physical register"
     output logic commit_mispredict_o,     // "Flush the pipeline!"
-    output logic [ROB_TAG_W-1:0] commit_tag_recovery_o // Tail pointer to restore to
+    output logic [ROB_TAG_W-1:0] commit_tag_recovery_o, // Tail pointer to restore to
+    output logic commit_is_branch_jump_o // <--- ADD THIS
 );
 
     // Storage [cite: 51-52]
@@ -61,17 +63,27 @@ module rob #(
                     end
                 end
             commit_valid_o <= 1'b0;
+
+            // Inside the else if (flush_i) block:
+            $display("[ROB-FLUSH] t=%0t Flush Tag=%0d. Moving Tail from %0d to %0d. Cleared Valid bits?", 
+                    $time, flush_tag_i, tail_ptr, flush_tag_i + 1);
+            // debug print to Confirm that when a branch mispredicts, the ROB tail moves back correctly and invalidates future instructions.
             
         end else begin
             
             // --- 1. COMMIT LOGIC (Head) ---
             commit_valid_o <= 1'b0; // Default
+            commit_is_branch_jump_o <= 1'b0;
             
             // If the oldest instruction (head) is valid AND execution is done:
             if (count > 0 && rob_array[head_ptr].valid && rob_array[head_ptr].done) begin
                 commit_valid_o      <= 1'b1;
                 commit_old_preg_o   <= rob_array[head_ptr].rd_old_phys;
                 commit_mispredict_o <= rob_array[head_ptr].mispredicted;
+
+                if (rob_array[head_ptr].is_branch || rob_array[head_ptr].is_jump) begin
+                    commit_is_branch_jump_o <= 1'b1;
+                end
                 
                 // Advance Head
                 head_ptr <= head_ptr + 1'b1;
@@ -95,6 +107,8 @@ module rob #(
             // --- 3. WRITEBACK / COMPLETION LOGIC ---
             // Execution unit says "Tag X finished"
             if (cdb_valid_i) begin
+                $display("[CDB] t=%0t Tag %0d Completed! (Data=%h)", $time, cdb_tag_i, cdb_valid_i); // Add data input to ROB for debug if needed
+                
                 rob_array[cdb_tag_i].done <= 1'b1;
                 if (cdb_mispredict_i) begin
                    rob_array[cdb_tag_i].mispredicted <= 1'b1;

@@ -25,7 +25,7 @@
 
 (Values are in signed decimal)
 # a0 = 0
-# a1 = 303305280
+# a1 = 303305280 (12141240 in hex)
 
 
 

@@ -54,6 +54,14 @@ module branch_unit #(
         end
     end
 
+    always_ff @(posedge clk) begin
+        if (valid_i && is_jump_i) begin
+            $display("[JALR-EXEC] t=%0t PC=%h JALR Target=%h (RS1=%h + Imm=%h)", 
+                    $time, pc_i, target_addr_o, rs1_val_i, imm_i);
+        end
+    end //debug print
+
+
     // Sequential Output Logic
     always_ff @(posedge clk) begin
         if (rst) begin
