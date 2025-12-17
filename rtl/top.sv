@@ -102,6 +102,7 @@ module RISCV #(
     // Pack/unpack struct <-> bit-vectors
     assign fetch_data_in_bits  = fetch_data_in;
     assign fetch_data_out      = fetch_dec_t'(fetch_data_out_bits);
+	 logic flush_pipeline; 
 
     skid_buffer_struct #(
         .WIDTH(FD_WIDTH)
@@ -113,7 +114,10 @@ module RISCV #(
         .data_in   (fetch_data_in_bits),
         .valid_out (dec_valid),
         .ready_out (dec_ready),
-        .data_out  (fetch_data_out_bits)
+        .data_out  (fetch_data_out_bits),
+
+        // [ADD THIS LINE]
+        .flush_i   (flush_pipeline)
     );
 
     // ----------------------------
@@ -202,7 +206,7 @@ module RISCV #(
         .rob_commit_free_valid_i (commit_valid),
         .rob_commit_free_preg_i  (commit_old_preg),
 
-        .recover_i               (1'b0) // hook this up to commit_mispredict later
+        .recover_i               (flush_pipeline) // hook this up to commit_mispredict later
     );
 
     // Decode ready comes from Rename/Dispatch
@@ -241,9 +245,17 @@ module RISCV #(
     logic [5:0]           cdb_preg;
     logic [ROB_TAG_W-1:0] cdb_rob_tag;
     logic                 cdb_mispredict;
-	 
-	 assign redirect_valid = br_valid_o && br_taken_o;
-	 assign redirect_pc = br_target_addr_o;
+
+    // [NEW/UPDATED CODE]
+    // 1. Define the flush signal
+   // logic flush_pipeline; 
+    // 2. The trigger logic: If we have a valid misprediction, we flush and redirect.
+    // This matches Redirect Logic (Fix 3)
+    assign flush_pipeline = br_valid_o && br_mispredict_o;
+    assign redirect_valid = flush_pipeline; 
+    // 3. 
+    assign redirect_pc    = br_target_addr_o;
+
 
     // Simple priority: Branch > LSU > ALU
     always_comb begin
@@ -258,8 +270,8 @@ module RISCV #(
             cdb_valid      = 1'b1;
             cdb_rob_tag    = br_rob_tag_o;
             cdb_mispredict = br_mispredict_o;
-				cdb_data       = br_result_o;
-				cdb_preg       = br_dest_preg;
+			cdb_data       = br_result_o;
+			cdb_preg       = br_dest_preg;
         end
         else if (lsu_cdb_valid) begin
             cdb_valid      = 1'b1;
@@ -283,6 +295,8 @@ module RISCV #(
     ) u_rob (
         .clk                     (clk),
         .rst                     (reset),
+        .flush_i                 (flush_pipeline),
+        .flush_tag_i             (br_rob_tag_o),
 
         .dispatch_valid_i        (rob_push),
         .dispatch_entry_i        (rob_entry),
@@ -417,7 +431,10 @@ end
         .dispatch_alu_valid_o    (dispatch_alu_valid),
         .dispatch_lsu_valid_o    (dispatch_lsu_valid),
         .dispatch_branch_valid_o (dispatch_branch_valid),
-        .issue_pkt_o             (issue_pkt)
+        .issue_pkt_o             (issue_pkt),
+
+        // [ADD THIS LINE]
+        .flush_i                 (flush_pipeline)
     );
 
     // ----------------------------
@@ -436,6 +453,7 @@ end
     ) u_rs_alu (
         .clk                  (clk),
         .reset                (reset),
+        .flush_i                (flush_pipeline),
 
         .write_en             (dispatch_alu_valid),
         .write_data           (issue_pkt),
@@ -479,6 +497,37 @@ end
                  alu_issue_entry.alu_op);
     end
 	end
+    
+    // Debug prints
+    always_ff @(posedge clk) begin
+		 if (dispatch_branch_valid) begin
+			  $display("[DISPATCH-BR] t=%0t pc=%08h rob_tag=%0d", 
+						  $time, issue_pkt.pc, issue_pkt.rob_tag);
+		end
+	 end
+
+    // In top.sv, where you instantiate the branch unit:
+    always_ff @(posedge clk) begin
+       // if (br_issue_valid) begin
+            //$display("[BRANCH-ISSUE] t=%0t pc=%08h rob_tag=%0d is_branch=%0d is_jump=%0d",
+              //      $time, br_issue_entry.pc, br_issue_entry.rob_tag,
+               //     br_issue_entry.is_branch, br_issue_entry.is_jump);
+      //  end
+        
+        if (br_valid_o) begin
+            //$display("[BRANCH-RESULT] t=%0t pc=%08h rob_tag=%0d mispredict=%0d target=%08h",
+                   // $time, br_issue_entry.pc, br_rob_tag_o, br_mispredict_o, br_target_addr_o);
+        end
+    end
+        
+    always @(posedge clk) begin
+        if (flush_pipeline) begin
+            $display("[FLUSH] t=%0t Redirect to %08h", 
+                    $time, redirect_pc);
+        end
+    end
+
+
 
     alu_unit #(
         .ROB_TAG_W(ROB_TAG_W)
@@ -510,6 +559,7 @@ end
     ) u_rs_lsu (
         .clk                  (clk),
         .reset                (reset),
+        .flush_i                (flush_pipeline),
 
         .write_en             (dispatch_lsu_valid),
         .write_data           (issue_pkt),
@@ -582,6 +632,7 @@ end
     ) u_rs_branch (
         .clk                  (clk),
         .reset                (reset),
+        .flush_i                (flush_pipeline),
 
         .write_en             (dispatch_branch_valid),
         .write_data           (issue_pkt),
