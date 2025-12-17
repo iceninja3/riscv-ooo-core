@@ -147,6 +147,9 @@ module Rename #(
         out_valid_q <= 0;
 
       end else begin
+        if (rob_count_i == 0) begin
+            ckpt_sp <= 0;
+        end
 
         if (out_valid_q && ren_ready_i)
           out_valid_q <= 0;
@@ -170,24 +173,32 @@ module Rename #(
           rob_tag_out_q <= rob_tag_q;
           rob_tag_q     <= rob_tag_q + 1;
 
-          // Checkpoint Creation
-          // <--- FIXED: Create snapshot for Jumps too
-          if ((dec_is_branch_i || dec_is_jump_i) && ckpt_sp < N_CHECKPTS) begin
-            idx = ckpt_sp;
-            for (i = 0; i < N_LOG; i++)
-              map_ckpt[idx][i] = map_table[i];
+          // --- Checkpoint Creation (Fixed Logic) ---
+          if (dec_is_branch_i || dec_is_jump_i) begin
             
-            fl_head_ckpt[idx]  = fl_head;
-            fl_tail_ckpt[idx]  = fl_tail;
-            fl_count_ckpt[idx] = fl_count;
-            rob_tag_ckpt[idx]  = rob_tag_q;
+            // Logic: If ROB is empty, we treat current SP as 0. Otherwise use current ckpt_sp.
+            int current_sp;
+            current_sp = (rob_count_i == 0) ? 0 : ckpt_sp;
 
-            ckpt_sp <= ckpt_sp + 1;
+            if (current_sp < N_CHECKPTS) begin
+                // Save Snapshot at 'current_sp'
+                for (i = 0; i < N_LOG; i++)
+                  map_ckpt[current_sp][i] = map_table[i];
+                
+                fl_head_ckpt[current_sp]  = fl_head;
+                fl_tail_ckpt[current_sp]  = fl_tail;
+                fl_count_ckpt[current_sp] = fl_count;
+                rob_tag_ckpt[current_sp]  = rob_tag_q;
+
+                // Update Stack Pointer
+                // Last Assignment Wins: This overrides the "ckpt_sp <= 0" at the top
+                ckpt_sp <= current_sp + 1;
+            end
           end
 
           out_valid_q <= 1;
         end
-      end
+      end //end else statement
     end
   end
 

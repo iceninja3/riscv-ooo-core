@@ -3,6 +3,7 @@ module reservation_station #(
     parameter N_PHYS    = 64
 )(
     input logic clk, reset,
+    input logic flush_i, // <--- ADD THIS INPUT
 
     // --- Interface with Dispatch ---
     input logic  write_en,
@@ -51,6 +52,8 @@ module reservation_station #(
     always_ff @(posedge clk) begin
         if (reset) begin
             slots_valid <= '0;
+        end else if (flush_i) begin  // <--- ADD THIS CHECK
+            slots_valid <= '0;       // Kill everything on mispredict
         end else begin
             
             // --- A. Allocation (Write from Dispatch) ---

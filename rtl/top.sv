@@ -114,7 +114,7 @@ module RISCV #(
         .data_in   (fetch_data_in_bits),
         .valid_out (dec_valid),
         .ready_out (dec_ready),
-        .data_out  (fetch_data_out_bits),
+        .data_out  (fetch_data_out_bits)
 
         // [ADD THIS LINE]
         .flush_i   (flush_pipeline)
@@ -248,7 +248,7 @@ module RISCV #(
 
     // [NEW/UPDATED CODE]
     // 1. Define the flush signal
-   // logic flush_pipeline; 
+    logic flush_pipeline; 
     // 2. The trigger logic: If we have a valid misprediction, we flush and redirect.
     // This matches Redirect Logic (Fix 3)
     assign flush_pipeline = br_valid_o && br_mispredict_o;
@@ -431,7 +431,7 @@ end
         .dispatch_alu_valid_o    (dispatch_alu_valid),
         .dispatch_lsu_valid_o    (dispatch_lsu_valid),
         .dispatch_branch_valid_o (dispatch_branch_valid),
-        .issue_pkt_o             (issue_pkt),
+        .issue_pkt_o             (issue_pkt)
 
         // [ADD THIS LINE]
         .flush_i                 (flush_pipeline)
@@ -500,23 +500,22 @@ end
     
     // Debug prints
     always_ff @(posedge clk) begin
-		 if (dispatch_branch_valid) begin
-			  $display("[DISPATCH-BR] t=%0t pc=%08h rob_tag=%0d", 
-						  $time, issue_pkt.pc, issue_pkt.rob_tag);
-		end
-	 end
+    if (dispatch_branch_valid) begin
+        $display("[DISPATCH-BR] t=%0t pc=%08h rob_tag=%0d", 
+                 $time, issue_pkt.pc, issue_pkt.rob_tag);
+    end
 
     // In top.sv, where you instantiate the branch unit:
     always_ff @(posedge clk) begin
-       // if (br_issue_valid) begin
-            //$display("[BRANCH-ISSUE] t=%0t pc=%08h rob_tag=%0d is_branch=%0d is_jump=%0d",
-              //      $time, br_issue_entry.pc, br_issue_entry.rob_tag,
-               //     br_issue_entry.is_branch, br_issue_entry.is_jump);
-      //  end
+        if (br_issue_valid) begin
+            $display("[BRANCH-ISSUE] t=%0t pc=%08h rob_tag=%0d is_branch=%0d is_jump=%0d",
+                    $time, br_issue_entry.pc, br_issue_entry.rob_tag,
+                    br_issue_entry.is_branch, br_issue_entry.is_jump);
+        end
         
         if (br_valid_o) begin
-            //$display("[BRANCH-RESULT] t=%0t pc=%08h rob_tag=%0d mispredict=%0d target=%08h",
-                   // $time, br_issue_entry.pc, br_rob_tag_o, br_mispredict_o, br_target_addr_o);
+            $display("[BRANCH-RESULT] t=%0t pc=%08h rob_tag=%0d mispredict=%0d target=%08h",
+                    $time, br_issue_entry.pc, br_rob_tag_o, br_mispredict_o, br_target_addr_o);
         end
     end
         
@@ -527,7 +526,7 @@ end
         end
     end
 
-
+end
 
     alu_unit #(
         .ROB_TAG_W(ROB_TAG_W)

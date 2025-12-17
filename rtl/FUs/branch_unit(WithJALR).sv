@@ -17,7 +17,7 @@ module branch_unit #(
     output logic [ROB_TAG_W-1:0]  rob_tag_o,
     output logic                  mispredict_o,
     output logic [31:0]           target_addr_o,
-    output logic                  actual_taken_o
+    output logic                  actual_taken_o,
 
     //for actually writing into register
     input  logic [5:0]            rd_p_i, // Dest Register (for JAL/JALR)
@@ -77,14 +77,22 @@ module branch_unit #(
                 mispredict_o   <= (taken != 1'b0);
                 
 
-                rd_p_o <= rd_p_i; // destination reg
+                // rd_p_o <= rd_p_i; // destination reg
+                
                 if (is_jump_i) begin
                     result_o <= pc_i + 32'd4;
+                    rd_p_o   <= rd_p_i;       // Only JALR writes back
                 end else begin
-                    result_o <= 32'd0; // Branches don't write registers
+                    result_o <= 32'd0;
+                    rd_p_o   <= 6'd0;         // BNE must NOT write to PRF
+                end 
+            end //end if valid_i
+            else begin
+                    // 3. Clear signals when invalid
+                    mispredict_o <= 1'b0;
+                    valid_o      <= 1'b0;
                 end
-                
-            end
         end
     end
 endmodule
+
