@@ -154,6 +154,17 @@ module decode (
                 fu_type   = FU_BRANCH;
                 imm       = {{20{inst[31]}}, inst[31:20]};
             end
+            default: begin
+                // Treating unknown opcodes as NOPs ensures safety
+                RegWrite  = 0;
+                ALUSrc    = 0;
+                MemRead   = 0;
+                MemWrite  = 0;
+                rs1_valid = 0;
+                rs2_valid = 0;
+                branch    = 0;
+                jump      = 0;
+            end
         endcase
 
         // payload
@@ -170,5 +181,17 @@ module decode (
         ctrl_payload_o.is_branch = branch;
         ctrl_payload_o.is_jump   = jump;
         ctrl_payload_o.funct3    = funct3;
+    end
+
+    initial begin
+        $display("#######################################################");
+        $display("### DECODE MODULE: VERSION 2 (COMPILE CONFIRMED)    ###");
+        $display("#######################################################");
+    end
+    always @(pc) begin
+        if (pc == 32'h44) begin
+            $display("DEBUG: PC=0x44 Opcode=%b Branch?=%b RegWrite=%b (Should be 0!)", 
+                     opcode, branch, RegWrite);
+        end
     end
 endmodule

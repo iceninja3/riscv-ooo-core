@@ -124,7 +124,7 @@ module reservation_station #(
     if ($time % 1000 == 0) begin
          for (int i=0; i<NUM_SLOTS; i++) begin
              if (slots_valid[i]) begin
-                 $display("[RS-DUMb] t=%0t Slot %0d: PC=%h | Waiting Src1? %b (Tag %d) | Waiting Src2? %b (Tag %d)",
+                 $display("[RS-DUMP] t=%0t Slot %0d: PC=%h | Waiting Src1? %b (Tag %d) | Waiting Src2? %b (Tag %d)",
                           $time, i, slots[i].pc, 
                           !slots[i].src1_ready, slots[i].p_src1,
                           !slots[i].src2_ready, slots[i].p_src2);
@@ -132,7 +132,6 @@ module reservation_station #(
          end
     end
 end
-
     
     
     priority_decoder #(.WIDTH(NUM_SLOTS)) issue_decoder (

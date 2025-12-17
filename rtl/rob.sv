@@ -7,6 +7,7 @@ module rob #(
     input  logic rst,
     input logic flush_i,
     input logic [ROB_TAG_W-1:0] flush_tag_i, // Connect this to 'br_rob_tag_o' in top.sv
+    
 
     // --- Interface with Dispatch ---
     input  logic dispatch_valid_i,
@@ -24,7 +25,8 @@ module rob #(
     output logic commit_valid_o,          // "Instruction retired!"
     output logic [5:0] commit_old_preg_o, // "Free this physical register"
     output logic commit_mispredict_o,     // "Flush the pipeline!"
-    output logic [ROB_TAG_W-1:0] commit_tag_recovery_o // Tail pointer to restore to
+    output logic [ROB_TAG_W-1:0] commit_tag_recovery_o, // Tail pointer to restore to
+    output logic commit_is_branch_jump_o // <--- ADD THIS
 );
 
     // Storage [cite: 51-52]
@@ -71,12 +73,17 @@ module rob #(
             
             // --- 1. COMMIT LOGIC (Head) ---
             commit_valid_o <= 1'b0; // Default
+            commit_is_branch_jump_o <= 1'b0;
             
             // If the oldest instruction (head) is valid AND execution is done:
             if (count > 0 && rob_array[head_ptr].valid && rob_array[head_ptr].done) begin
                 commit_valid_o      <= 1'b1;
                 commit_old_preg_o   <= rob_array[head_ptr].rd_old_phys;
                 commit_mispredict_o <= rob_array[head_ptr].mispredicted;
+
+                if (rob_array[head_ptr].is_branch || rob_array[head_ptr].is_jump) begin
+                    commit_is_branch_jump_o <= 1'b1;
+                end
                 
                 // Advance Head
                 head_ptr <= head_ptr + 1'b1;

@@ -139,6 +139,7 @@ module Dispatch (
     assign rob_entry_o.rd_phys      = buff_rd_new_p;
     assign rob_entry_o.rd_old_phys  = buff_rd_old_p;
     assign rob_entry_o.is_branch    = buff_payload.is_branch;
+    assign rob_entry_o.is_jump      = buff_payload.is_jump;
     assign rob_entry_o.mispredicted = 1'b0;
     assign rob_entry_o.pc           = buff_payload.pc;
 

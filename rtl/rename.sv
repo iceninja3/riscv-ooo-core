@@ -17,7 +17,8 @@ module Rename #(
   input  logic                      dec_rd_used_i,
   input  logic                      dec_is_branch_i,
   input  logic                      dec_is_jump_i,     // <--- NEW INPUT
-  input  logic [4:0] 					rob_count_i,
+  input logic [4:0]                 rob_count_i,
+  input logic rob_commit_is_branch_jump_i, // <--- ADD THIS
 
   input  pipeline_types::ctrl_payload_t payload_i,
   output pipeline_types::ctrl_payload_t payload_o,
@@ -79,7 +80,8 @@ module Rename #(
   assign rob_tag_o   = rob_tag_out_q;
 
   logic need_alloc;
-  assign need_alloc = dec_valid_i && dec_rd_used_i && (dec_rd_i != X0_LOG);
+
+  assign need_alloc = dec_valid_i && dec_rd_used_i && (dec_rd_i != 5'd0) && !dec_is_branch_i;
 
   logic resources_ok;
   // <--- FIXED: Check checkpoints for Jumps too
@@ -97,6 +99,9 @@ module Rename #(
   // MAIN SEQUENTIAL LOGIC
   // ============================================================
   always_ff @(posedge clk) begin
+    if (dec_valid_i && payload_i.pc == 32'h44) begin
+        $display("[RENAME DEBUG] PC=0x44. dec_rd_used_i=%b (If 1, top.sv wiring is wrong!)", dec_rd_used_i);
+    end
     if (rst) begin
 
       for (i = 0; i < N_LOG; i++)
@@ -148,65 +153,88 @@ module Rename #(
         out_valid_q <= 0;
 
       end else begin
-        if (rob_count_i == 0) begin
-            ckpt_sp <= 0;
-        end
+                  // ... inside the else block of always_ff ...
+              
+              // -------------------------------------------------------------
+              // 1. Calculate Next Stack Pointer (Handle Freeing + Allocating)
+              // -------------------------------------------------------------
+              automatic int next_sp = ckpt_sp; // Start with current value
 
-        if (out_valid_q && ren_ready_i)
-          out_valid_q <= 0;
+              // FREE: If ROB says a branch/jump committed successfully, free a slot.
+              // (Note: Check 'rob_commit_free_valid_i' to ensure it's a valid commit)
+              if (rob_commit_free_valid_i && rob_commit_is_branch_jump_i && ckpt_sp > 0) begin
+                  next_sp = next_sp - 1;
+              end
+              
+              // -------------------------------------------------------------
+              // 2. Main Decode Logic
+              // -------------------------------------------------------------
+              if (rob_count_i == 0) begin
+                  ckpt_sp <= 0;
+                  // Safety: If ROB is empty, reset stack entirely.
+                  next_sp = 0; 
+              end
 
-        if (accept_decode) begin
+              if (out_valid_q && ren_ready_i)
+                  out_valid_q <= 0;
 
-          $display("[RENAME] t=%0t PC=%h Inst=%h | Mapping: rs1(x%0d)->P%0d  rs2(x%0d)->P%0d  rd(x%0d)->P%0d (Old: P%0d)",
-             $time, payload_i.pc, payload_i.inst,
-             dec_rs1_i, rs1_p_q, 
-             dec_rs2_i, rs2_p_q,
-             dec_rd_i, rd_new_p_q, rd_old_p_q);
-             
-          payload_o <= payload_i;
+              if (accept_decode) begin
+                    $display("[RENAME] t=%0t PC=%h Inst=%h | Mapping: rs1(x%0d)->P%0d  rs2(x%0d)->P%0d  rd(x%0d)->P%0d (Old: P%0d)",
+                      $time, payload_i.pc, payload_i.inst,
+                      dec_rs1_i, rs1_p_q, 
+                      dec_rs2_i, rs2_p_q,
+                      dec_rd_i, rd_new_p_q, rd_old_p_q);
 
-          rs1_p_q <= dec_rs1_used_i ? map_table[dec_rs1_i] : '0;
-          rs2_p_q <= dec_rs2_used_i ? map_table[dec_rs2_i] : '0;
-          rd_old_p_q <= dec_rd_used_i ? map_table[dec_rd_i] : '0;
+                    payload_o <= payload_i;
 
-          if (need_alloc) begin
-            rd_new_p_q          <= freelist[fl_head];
-            map_table[dec_rd_i] <= freelist[fl_head];
-            fl_head             <= fl_head + 1;
-            fl_count            <= fl_count - 1;
-          end else begin
-            rd_new_p_q <= map_table[dec_rd_i];
-          end
+                    // Standard Mapping
+                    rs1_p_q <= dec_rs1_used_i ? map_table[dec_rs1_i] : '0;
+                    rs2_p_q <= dec_rs2_used_i ? map_table[dec_rs2_i] : '0;
+                    rd_old_p_q <= (dec_rd_used_i && !dec_is_branch_i) ? map_table[dec_rd_i] : '0;
 
-          rob_tag_out_q <= rob_tag_q;
-          rob_tag_q     <= rob_tag_q + 1;
+                    // Allocation
+                    if (need_alloc) begin
+                      rd_new_p_q          <= freelist[fl_head];
+                      map_table[dec_rd_i] <= freelist[fl_head];
+                      fl_head             <= fl_head + 1;
+                      fl_count            <= fl_count - 1;
+                    end else begin
+                      rd_new_p_q <= map_table[dec_rd_i];
+                    end
 
-          // --- Checkpoint Creation (Fixed Logic) ---
-          if (dec_is_branch_i || dec_is_jump_i) begin
-            
-            // Logic: If ROB is empty, we treat current SP as 0. Otherwise use current ckpt_sp.
-            int current_sp;
-            current_sp = (rob_count_i == 0) ? 0 : ckpt_sp;
+                    // Tag tracking (Technically unused by Dispatch, but fine to keep)
+                    rob_tag_out_q <= rob_tag_q;
+                    rob_tag_q     <= rob_tag_q + 1;
 
-            if (current_sp < N_CHECKPTS) begin
-                // Save Snapshot at 'current_sp'
-                for (i = 0; i < N_LOG; i++)
-                  map_ckpt[current_sp][i] = map_table[i];
-                
-                fl_head_ckpt[current_sp]  = fl_head;
-                fl_tail_ckpt[current_sp]  = fl_tail;
-                fl_count_ckpt[current_sp] = fl_count;
-                rob_tag_ckpt[current_sp]  = rob_tag_q;
+                    // -------------------------------------------------------------
+                    // 3. Checkpoint Creation (Using the calculated next_sp)
+                    // -------------------------------------------------------------
+                    if (dec_is_branch_i || dec_is_jump_i) begin
+                        
+                        if (next_sp < N_CHECKPTS) begin
+                            // Capture Snapshot
+                            // Note: Since map_table update is non-blocking (<=), 
+                            // this blocking read (=) correctly captures the OLD table state.
+                            map_ckpt[next_sp]      = map_table; 
+                            fl_head_ckpt[next_sp]  = fl_head;
+                            fl_tail_ckpt[next_sp]  = fl_tail;
+                            fl_count_ckpt[next_sp] = fl_count;
+                            rob_tag_ckpt[next_sp]  = rob_tag_q;
+                            
+                            // Increment local variable
+                            next_sp = next_sp + 1;
+                        end
+                    end
+                    
+                    // Apply the final calculated SP to the register
+                    ckpt_sp <= next_sp;
 
-                // Update Stack Pointer
-                // Last Assignment Wins: This overrides the "ckpt_sp <= 0" at the top
-                ckpt_sp <= current_sp + 1;
-            end
-          end
+                    out_valid_q <= 1;
+              end
+              // ... end else block ...
 
-          out_valid_q <= 1;
-        end
-      end //end else statement
+      
+      
     end
   end
 
