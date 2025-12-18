@@ -139,7 +139,7 @@ module decode (
 
             // ---------- BRANCH (BNE) ----------
             opcode_BRANCH: begin
-                RegWrite  = 0;       // <--- FORCE THIS TO 0 EXPLICITLY
+                RegWrite  = 0;       
                 rs1_valid = 1;
                 rs2_valid = 1;
                 branch    = 1;

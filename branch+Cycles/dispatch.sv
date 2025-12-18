@@ -14,9 +14,9 @@ module Dispatch (
 
     // --- Inputs from ROB ---
     input logic                      rob_full_i,
-    input logic [3:0]                rob_alloc_tag_i, // ROB tells us "Use Tag #5"
-    output logic                     rob_push_o,      // We tell ROB "Allocate now"
-    output pipeline_types::rob_entry_t rob_entry_o,   // Data for the ROB slot
+    input logic [3:0]                rob_alloc_tag_i, 
+    output logic                     rob_push_o,      
+    output pipeline_types::rob_entry_t rob_entry_o,   
 
     // --- Inputs from Reservation Stations (Status) ---
     input logic rs_alu_ready_i,
@@ -47,15 +47,12 @@ module Dispatch (
     logic fire_dispatch;
     logic buffer_accept;
     assign buffer_accept = (!buff_valid) || fire_dispatch;
-    assign ren_ready_o   = buffer_accept; // Tell Rename "Go ahead" if we can take it
+    assign ren_ready_o   = buffer_accept; 
 
     always_ff @(posedge clk) begin
         if (rst) begin
             buff_valid <= 1'b0;
-            // Clear payloads (optional)
         end else if (flush_i) begin
-            // [ADD THIS LOGIC]
-            // Kill the instruction currently sitting in dispatch
             buff_valid <= 1'b0;
         end else begin
             if (buffer_accept) begin
@@ -87,7 +84,7 @@ module Dispatch (
             FU_ALU:    target_rs_ready = rs_alu_ready_i;
             FU_LSU:    target_rs_ready = rs_lsu_ready_i;
             FU_BRANCH: target_rs_ready = rs_branch_ready_i;
-            default:   target_rs_ready = 1'b1; // Should not happen, discard
+            default:   target_rs_ready = 1'b1; 
         endcase
     end
 
@@ -123,19 +120,16 @@ module Dispatch (
     assign issue_pkt_o.rs2_p     = buff_rs2_p;
     assign issue_pkt_o.rd_p      = buff_rd_new_p;
     assign issue_pkt_o.rob_tag   = rob_alloc_tag_i; // Use the tag the ROB gave us
-	// assign issue_pkt_o.is_branch = payload_i.is_branch;
-    // assign issue_pkt_o.is_jump   = payload_i.is_jump;
     assign issue_pkt_o.is_branch = buff_payload.is_branch;
     assign issue_pkt_o.is_jump   = buff_payload.is_jump; // added this bc was using 
-    // current inst to module instead of inst from buffer
 
     // B. To ROB
     assign rob_push_o = fire_dispatch;
 
     // Construct the ROB Entry (Bookkeeping)
     assign rob_entry_o.valid        = 1'b1;
-    assign rob_entry_o.done         = 1'b0; // Not done yet
-    assign rob_entry_o.rd_log       = 5'b0; // You might want to pass logical dest from Rename for debug
+    assign rob_entry_o.done         = 1'b0; 
+    assign rob_entry_o.rd_log       = 5'b0; 
     assign rob_entry_o.rd_phys      = buff_rd_new_p;
     assign rob_entry_o.rd_old_phys  = buff_rd_old_p;
     assign rob_entry_o.is_branch    = buff_payload.is_branch;

@@ -36,8 +36,6 @@ module branch_unit #(
         // ---------------------------------------------------------
         // LOGIC FOR JALR (is_jump_i)
         // ---------------------------------------------------------
-        // Since you are not using JAL, 'is_jump_i' guarantees JALR.
-        // JALR Target = (RS1 + Immediate) & ~1 (LSB masked to 0)
         if (is_jump_i) begin
             taken  = 1'b1; // Jumps are always taken
           target = (rs1_val_i + imm_i) & 32'hFFFF_FFFE; //new

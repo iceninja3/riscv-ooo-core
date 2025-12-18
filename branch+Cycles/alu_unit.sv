@@ -20,7 +20,7 @@ module alu_unit #(
     input  logic [ROB_TAG_W-1:0]  rob_tag_i,
 
     // CDB Interface Handshake
-    input  logic                  ready_i, // NEW: "Did the CDB accept my data?"
+    input  logic                  ready_i, 
     
     output logic                  valid_o,
     output logic [31:0]           result_o,
@@ -63,10 +63,7 @@ module alu_unit #(
                 buff_result  <= result_comb;
                 buff_rd_p    <= rd_p_i;
                 buff_rob_tag <= rob_tag_i;
-                
-                // Debug Print
-                // $display("[ALU-EXEC] t=%0t Tag=%d Op1=%h Op2=%h Result=%h", 
-                //          $time, rd_p_i, op1_i, op2_i, result_comb);
+            
             end 
             // CASE 2: No new input, but we are holding data.
             // If ready_i is 1, we transmitted successfully, so clear valid.
