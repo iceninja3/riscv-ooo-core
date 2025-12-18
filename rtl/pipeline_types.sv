@@ -1,15 +1,26 @@
 package pipeline_types;
-
+      // Fetch -> Decode struct
     // ----------------------------------------
+    typedef struct packed {
+        //logic        valid;
+        logic [31:0] pc;
+        logic [31:0] inst;
+        logic        taken_branch; //new
+        logic [31:0] branch_target; //new
+    } fetch_dec_t;
+    
+
+
+// ----------------------------------------
     // ALU op encoding used everywhere
     // ----------------------------------------
     typedef enum logic [2:0] {
-        ALU_AND = 3'd0,
-        ALU_SUB = 3'd1,
         ALU_ADD = 3'd2,
+        ALU_SUB = 3'd1,
+        ALU_AND = 3'd0,
         ALU_OR  = 3'd3,
         ALU_XOR = 3'd4,
-		  ALU_SRA = 3'd5, // New
+		ALU_SRA = 3'd5, // New
         ALU_SLTU = 3'd6  // New
     } alu_op_e;
 
@@ -108,13 +119,7 @@ package pipeline_types;
     // payload to go through rename from decode to execute without being touched/modified at all by Rename
 
     // ----------------------------------------
-    // Fetch -> Decode struct
-    // ----------------------------------------
-    typedef struct packed {
-        //logic        valid;
-        logic [31:0] pc;
-        logic [31:0] inst;
-    } fetch_dec_t;
+  
 
     // ----------------------------------------
     // Old dec_ren / ren_disp structs (if used)

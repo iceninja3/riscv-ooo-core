@@ -1,119 +1,156 @@
+`timescale 1ns / 1ps
 import pipeline_types::*;
+
 module rob #(
-    parameter int ROB_DEPTH = 16,   // Size of 16 
-    parameter int ROB_TAG_W = 4     // $clog2(16)
+    parameter int ROB_DEPTH = 16,
+    parameter int ROB_TAG_W = 4
 )(
     input  logic clk,
     input  logic rst,
-    input logic flush_i,
-    input logic [ROB_TAG_W-1:0] flush_tag_i, // Connect this to 'br_rob_tag_o' in top.sv
-    
 
-    // --- Interface with Dispatch ---
-    input  logic dispatch_valid_i,
-    input  rob_entry_t dispatch_entry_i, // Struct we defined above
-    output logic rob_full_o,             // Stalls Dispatch if high
-    output logic [ROB_TAG_W-1:0] alloc_tag_o, // The ID (index) given to this instr
+    // Flush Interface
+    input  logic                      flush_i,
+    input  logic [ROB_TAG_W-1:0]      flush_tag_i,
 
-    // --- Interface with Execution Units (CDB) ---
-    // When an ALU finishes, it broadcasts "Tag X is done!"
-    input  logic cdb_valid_i,
-    input  logic [ROB_TAG_W-1:0] cdb_tag_i,
-    input  logic cdb_mispredict_i, // Optional: if it was a bad branch
+    // Dispatch Interface
+    input  logic                      dispatch_valid_i,
+    input  rob_entry_t                dispatch_entry_i,
+    output logic                      rob_full_o,
+    output logic [ROB_TAG_W-1:0]      alloc_tag_o,
 
-    // --- Interface with Rename (Commit Feedback) ---
-    output logic commit_valid_o,          // "Instruction retired!"
-    output logic [5:0] commit_old_preg_o, // "Free this physical register"
-    output logic commit_mispredict_o,     // "Flush the pipeline!"
-    output logic [ROB_TAG_W-1:0] commit_tag_recovery_o, // Tail pointer to restore to
-    output logic commit_is_branch_jump_o // <--- ADD THIS
+    // CDB Interface
+    input  logic                      cdb_valid_i,
+    input  logic [ROB_TAG_W-1:0]      cdb_tag_i,
+    input  logic                      cdb_mispredict_i,
+
+    // Commit Interface
+    output logic                      commit_valid_o,
+    output logic [5:0]                commit_old_preg_o,
+    output logic                      commit_mispredict_o,
+    output logic [ROB_TAG_W-1:0]      commit_tag_recovery_o,
+
+    // Fix Ports
+    output logic [ROB_TAG_W:0]        count_o,
+    output logic                      commit_is_branch_jump_o
 );
 
-    // Storage [cite: 51-52]
+    // -------------------------------------------------------------------------
+    // Internal Signals
+    // -------------------------------------------------------------------------
     rob_entry_t rob_array [ROB_DEPTH];
-    logic [ROB_TAG_W-1:0] head_ptr; // Commit pointer
-    logic [ROB_TAG_W-1:0] tail_ptr; // Allocate pointer
-    logic [ROB_TAG_W:0]   count;    // To track full/empty status
-
-    // Full Signal
-    assign rob_full_o = (count == ROB_DEPTH);
+    logic [ROB_TAG_W-1:0] head_ptr;
+    logic [ROB_TAG_W-1:0] tail_ptr;
     
-    // Tag Assignment
-    assign alloc_tag_o = tail_ptr;
+    // RENAMED BACK TO 'count' SO TESTBENCH CAN FIND IT
+    logic [ROB_TAG_W:0]   count; 
 
+    // -------------------------------------------------------------------------
+    // Assignments
+    // -------------------------------------------------------------------------
+    assign alloc_tag_o = tail_ptr;
+    assign count_o     = count; // output connection
+    assign rob_full_o  = (count == ROB_DEPTH);
+
+    assign commit_is_branch_jump_o = (count > 0) && rob_array[head_ptr].valid && 
+                                     (rob_array[head_ptr].is_branch || rob_array[head_ptr].is_jump);
+
+    // -------------------------------------------------------------------------
+    // Sequential Logic
+    // -------------------------------------------------------------------------
+    integer i;
+    
     always_ff @(posedge clk) begin
         if (rst) begin
-            head_ptr <= '0;
-            tail_ptr <= '0;
-            count    <= '0;
+            head_ptr       <= '0;
+            tail_ptr       <= '0;
+            count          <= '0;
             commit_valid_o <= 1'b0;
-            for (int i = 0; i < ROB_DEPTH; i++) begin
+            commit_old_preg_o <= '0;
+            commit_mispredict_o <= 1'b0;
+            commit_tag_recovery_o <= '0;
+
+            for (i = 0; i < ROB_DEPTH; i++) begin
                 rob_array[i].valid <= 1'b0;
+                rob_array[i].done  <= 1'b0;
             end
-            // Clear valid bits in array
+
         end else if (flush_i) begin
-            tail_ptr <= flush_tag_i + 1'b1;
-            count <= (flush_tag_i + 1'b1) - head_ptr;
-            for (int i = 0; i < ROB_DEPTH; i++) begin
-                    // if index is after flush tag, kill it
-                    if (flush_tag_i < tail_ptr) begin
-                        if (i > flush_tag_i && i < tail_ptr) rob_array[i].valid <= 1'b0;
-                    end else begin // Wrap around case
-                        if (i > flush_tag_i || i < tail_ptr) rob_array[i].valid <= 1'b0;
-                    end
-                end
+            // =================================================================
+            // FLUSH LOGIC
+            // =================================================================
+            // DECLARATION MUST BE FIRST
+            logic [ROB_TAG_W-1:0] new_tail; 
+            
+            // 1. Rollback Tail
+            new_tail = flush_tag_i + 1'b1;
+            tail_ptr <= new_tail;
+
+            // 2. Recalculate Count
+            if (new_tail >= head_ptr)
+                count <= new_tail - head_ptr;
+            else
+                count <= ROB_DEPTH - (head_ptr - new_tail);
+
+            // 3. Halt Commit
             commit_valid_o <= 1'b0;
 
-            // Inside the else if (flush_i) block:
-            $display("[ROB-FLUSH] t=%0t Flush Tag=%0d. Moving Tail from %0d to %0d. Cleared Valid bits?", 
-                    $time, flush_tag_i, tail_ptr, flush_tag_i + 1);
-            // debug print to Confirm that when a branch mispredicts, the ROB tail moves back correctly and invalidates future instructions.
-            
-        end else begin
-            
-            // --- 1. COMMIT LOGIC (Head) ---
-            commit_valid_o <= 1'b0; // Default
-            commit_is_branch_jump_o <= 1'b0;
-            
-            // If the oldest instruction (head) is valid AND execution is done:
-            if (count > 0 && rob_array[head_ptr].valid && rob_array[head_ptr].done) begin
-                commit_valid_o      <= 1'b1;
-                commit_old_preg_o   <= rob_array[head_ptr].rd_old_phys;
-                commit_mispredict_o <= rob_array[head_ptr].mispredicted;
-
-                if (rob_array[head_ptr].is_branch || rob_array[head_ptr].is_jump) begin
-                    commit_is_branch_jump_o <= 1'b1;
-                end
-                
-                // Advance Head
-                head_ptr <= head_ptr + 1'b1;
-                count    <= count - 1'b1; // (Note: handle simultaneous dispatch carefully)
-                
-                // Mark slot as invalid
-                rob_array[head_ptr].valid <= 1'b0;
+            // 4. Process CDB writes (race condition safety)
+            if (cdb_valid_i) begin
+                rob_array[cdb_tag_i].done <= 1'b1;
+                if (cdb_mispredict_i) rob_array[cdb_tag_i].mispredicted <= 1'b1;
             end
 
-            // --- 2. DISPATCH LOGIC (Tail) ---
-            // If Dispatch sends something and we aren't full:
+        end else begin
+            // =================================================================
+            // NORMAL OPERATION
+            // =================================================================
+            // DECLARATIONS MUST BE FIRST
+            logic did_commit;
+            logic did_dispatch;
+            
+            // --- 1. COMMIT ---
+            commit_valid_o <= 1'b0; // Default
+            did_commit = 1'b0;
+
+            if (count > 0 && rob_array[head_ptr].valid && rob_array[head_ptr].done) begin
+                commit_valid_o        <= 1'b1;
+                commit_old_preg_o     <= rob_array[head_ptr].rd_old_phys;
+                commit_mispredict_o   <= rob_array[head_ptr].mispredicted;
+                commit_tag_recovery_o <= head_ptr;
+
+                // Invalidate and Advance
+                rob_array[head_ptr].valid <= 1'b0;
+                head_ptr   <= head_ptr + 1'b1;
+                did_commit = 1'b1;
+            end
+
+            // --- 2. DISPATCH ---
+            did_dispatch = 1'b0;
+
             if (dispatch_valid_i && !rob_full_o) begin
                 rob_array[tail_ptr] <= dispatch_entry_i;
                 rob_array[tail_ptr].valid <= 1'b1;
-                rob_array[tail_ptr].done  <= 1'b0; // Not done yet!
-                
-                tail_ptr <= tail_ptr + 1'b1;
-                count    <= count + 1'b1; // (Again, handle simulataneous commit/dispatch)
+                rob_array[tail_ptr].done  <= 1'b0;
+                rob_array[tail_ptr].mispredicted <= 1'b0; 
+
+                tail_ptr     <= tail_ptr + 1'b1;
+                did_dispatch = 1'b1;
             end
 
-            // --- 3. WRITEBACK / COMPLETION LOGIC ---
-            // Execution unit says "Tag X finished"
+            // --- 3. COUNT UPDATE ---
+            if (did_dispatch && !did_commit)
+                count <= count + 1;
+            else if (!did_dispatch && did_commit)
+                count <= count - 1;
+            
+            // --- 4. CDB WRITEBACK ---
             if (cdb_valid_i) begin
-                $display("[CDB] t=%0t Tag %0d Completed! (Data=%h)", $time, cdb_tag_i, cdb_valid_i); // Add data input to ROB for debug if needed
-                
                 rob_array[cdb_tag_i].done <= 1'b1;
                 if (cdb_mispredict_i) begin
-                   rob_array[cdb_tag_i].mispredicted <= 1'b1;
+                    rob_array[cdb_tag_i].mispredicted <= 1'b1;
                 end
             end
         end
     end
+
 endmodule

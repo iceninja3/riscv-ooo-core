@@ -4,6 +4,7 @@ module physical_reg_file #(
     parameter ADDR_WIDTH = $clog2(NUM_REGS)
 )(
     input logic clk,
+    input logic rst,
 
     // --- 1. ALU Unit Read Ports ---
     input  logic [ADDR_WIDTH-1:0] raddr_alu_src1,
@@ -34,12 +35,7 @@ module physical_reg_file #(
 
     logic [DATA_WIDTH-1:0] registers [0:NUM_REGS-1];
 
-     initial begin
-        integer i;
-        for (i = 0; i < NUM_REGS; i++) begin
-            registers[i] = '0;
-        end
-    end
+    
 
     // async reads
     assign rdata_alu_src1 = registers[raddr_alu_src1];
@@ -53,7 +49,13 @@ module physical_reg_file #(
 
     // sync write
     always_ff @(posedge clk) begin
-        if (wen && waddr != '0) begin
+        if (rst) begin
+            // "Reset behavior" - Loop works fine here in simulation
+            for (int i = 0; i < NUM_REGS; i++) begin
+                registers[i] <= '0;
+            end
+        end 
+        else if (wen && waddr != '0) begin
             registers[waddr] <= wdata;
         end
     end
