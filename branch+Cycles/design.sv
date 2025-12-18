@@ -59,6 +59,18 @@ module RISCV #(
     logic [31:0] fetch_pc, fetch_inst;
     logic        redirect_valid;
     logic [31:0] redirect_pc;
+  
+      // LSU Reservation Station Structural Wires
+    //logic                      dummy_dispatch_lsu_v;
+    logic                      dummy_rs_lsu_full;
+    logic                      dummy_lsu_issue_valid;
+    rs_entry_t                 dummy_lsu_issue_data;
+
+    // Branch Reservation Station Structural Wires
+    //logic                      dummy_dispatch_br_v;
+    logic                      dummy_rs_br_full;
+    logic                      dummy_br_issue_valid;
+    rs_entry_t                 dummy_br_issue_data;
 
     logic [4:0]  rs1, rs2, rd;
     logic [31:0] imm;
@@ -134,18 +146,21 @@ module RISCV #(
     );
 
     Dispatch u_dispatch_skeleton (
-        .clk(clk), .rst(reset), .flush_i(redirect_valid),
-        .ren_valid_i(state == S_DECODE), .payload_i(dec_payload),
-        .rs1_p_i(6'd0), .rs2_p_i(6'd0), .rd_new_p_i(6'd0), .rd_old_p_i(6'd0),
-        .ren_ready_o(dummy_ren_ready),
-        .rob_full_i(dummy_rob_full), .rob_alloc_tag_i(dummy_rob_tag),
-        .rob_push_o(dummy_rob_push), .rob_entry_o(dummy_rob_entry),
-        .rs_alu_ready_i(1'b1), .rs_lsu_ready_i(1'b1), .rs_branch_ready_i(1'b1),
-        .dispatch_alu_valid_o(dummy_dispatch_alu_v),
-        .dispatch_lsu_valid_o(dummy_dispatch_lsu_v),
-        .dispatch_branch_valid_o(dummy_dispatch_br_v),
-        .issue_pkt_o(dummy_issue_pkt)
-    );
+    .clk(clk), .rst(reset), .flush_i(redirect_valid),
+    .ren_valid_i(state == S_DECODE), .payload_i(dec_payload),
+    .rs1_p_i(6'd0), .rs2_p_i(6'd0), .rd_new_p_i(6'd0), .rd_old_p_i(6'd0),
+    .ren_ready_o(dummy_ren_ready),
+    .rob_full_i(dummy_rob_full), .rob_alloc_tag_i(dummy_rob_tag),
+    .rob_push_o(dummy_rob_push), .rob_entry_o(dummy_rob_entry),
+    // Connect to the actual "Full" signals of the new stations
+    .rs_alu_ready_i(!dummy_rs_full), 
+    .rs_lsu_ready_i(!dummy_rs_lsu_full), 
+    .rs_branch_ready_i(!dummy_rs_br_full),
+    .dispatch_alu_valid_o(dummy_dispatch_alu_v),
+    .dispatch_lsu_valid_o(dummy_dispatch_lsu_v), // Updated
+    .dispatch_branch_valid_o(dummy_dispatch_br_v), // Updated
+    .issue_pkt_o(dummy_issue_pkt)
+);
 
     reservation_station #(.NUM_SLOTS(8), .N_PHYS(64)) u_rs_alu_skeleton (
         .clk(clk), .reset(reset), .flush_i(redirect_valid),
@@ -155,7 +170,40 @@ module RISCV #(
         .issue_ready(1'b1), .issue_valid(dummy_issue_valid), .issue_data(dummy_issue_data)
     );
 
-    physical_reg_file #(.NUM_REGS(32), .ADDR_WIDTH(5)) u_rf (
+    // Structural LSU Reservation Station
+reservation_station #(.NUM_SLOTS(8), .N_PHYS(64)) u_rs_lsu_skeleton (
+    .clk(clk), 
+    .reset(reset), 
+    .flush_i(redirect_valid),
+    .write_en(dummy_dispatch_lsu_v), 
+    .write_data(dummy_issue_pkt),
+    .src1_already_ready_i(1'b1), 
+    .src2_already_ready_i(1'b1),
+    .full(dummy_rs_lsu_full), 
+    .cdb_valid(1'b0), 
+    .cdb_tag(6'd0),
+    .issue_ready(1'b1), 
+    .issue_valid(dummy_lsu_issue_valid), 
+    .issue_data(dummy_lsu_issue_data)
+);
+
+// Structural Branch Reservation Station
+reservation_station #(.NUM_SLOTS(8), .N_PHYS(64)) u_rs_br_skeleton (
+    .clk(clk), 
+    .reset(reset), 
+    .flush_i(redirect_valid),
+    .write_en(dummy_dispatch_br_v), 
+    .write_data(dummy_issue_pkt),
+    .src1_already_ready_i(1'b1), 
+    .src2_already_ready_i(1'b1),
+    .full(dummy_rs_br_full), 
+    .cdb_valid(1'b0), 
+    .cdb_tag(6'd0),
+    .issue_ready(1'b1), 
+    .issue_valid(dummy_br_issue_valid), 
+    .issue_data(dummy_br_issue_data)
+);
+  physical_reg_file #(.NUM_REGS(32), .ADDR_WIDTH(5)) u_rf (
         .clk(clk), .rst(reset),
         .raddr_alu_src1(rs1), .rdata_alu_src1(rs1_data),
         .raddr_alu_src2(rs2), .rdata_alu_src2(rs2_data),
