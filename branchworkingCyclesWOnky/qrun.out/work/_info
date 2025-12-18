@@ -1,0 +1,519 @@
+m255
+K4
+z2
+Z0 !s99 nomlopt
+!s11f vlog 2024.3_1 2024.10, Oct 17 2024
+13
+!s112 1.1
+!i10d 8192
+!i10e 25
+!i10f 100
+cModel Technology
+Z1 d/home/runner
+valu_unit
+Z2 2design.sv|testbench.sv
+Z3 DXx6 sv_std 3 std 0 22 9oUSJO;AeEaW`l:M@^WG92
+Z4 DXx4 work 14 pipeline_types 0 22 leHl?TnfbjGLTR4Meb0^m2
+Z5 DXx4 work 14 design_sv_unit 0 22 TB`7kUHbIUR;EX<RihOCm2
+Z6 !s110 1766042033
+Z7 VDg1SIo80bB@j0V0VzS_@n1
+r1
+!s85 0
+!i10b 1
+!s100 cUOLaLH3ib9dSdT]oA8Bz3
+I5hJak7a7czO9B0MM1AiVc3
+Z8 !s105 design_sv_unit
+S1
+R1
+Z9 w1766042029
+8alu_unit.sv
+Z10 Falu_unit.sv
+!i122 0
+L0 8 81
+Z11 OL;L;2024.3_1;79
+31
+Z12 !s108 1766042032.000000
+Z13 !s107 btb.sv|dispatch.sv|Reservation_Station.sv|rename.sv|rob.sv|priority_decoder.sv|branch_unit.sv|lsu.sv|alu_unit.sv|physical_reg_file.sv|decode.sv|fetch.sv|iCache.sv|pipeline_types.sv|testbench.sv|design.sv|
+Z14 !s90 -timescale|1ns/1ns|-mfcu|design.sv|testbench.sv|-work|qrun.out/work|-statslog|qrun.out/stats_log|-writesessionid|+qrun.out/top_dus|-csession=incr|
+!i113 0
+Z15 o-timescale 1ns/1ns -mfcu -work qrun.out/work
+Z16 tCvgOpt 0
+vbranch_unit
+R2
+R3
+R4
+R5
+R6
+R7
+r1
+!s85 0
+!i10b 1
+!s100 P@PC^dB68>XEOjGEQ8Rcg0
+ISVKdmaA8;gC9W437afeCN3
+R8
+S1
+R1
+R9
+Z17 Fbranch_unit.sv
+R10
+!i122 0
+L0 1 101
+R11
+31
+R12
+R13
+R14
+!i113 0
+R15
+R16
+vbtb
+R2
+R3
+R4
+R5
+R6
+R7
+r1
+!s85 0
+!i10b 1
+!s100 98g1ZfLM5`;UDQM2XZE<G2
+IFJ6?d^EI1JiFmL:i3=Y@_3
+R8
+S1
+R1
+R9
+Z18 Fbtb.sv
+Z19 FReservation_Station.sv
+!i122 0
+Z20 L0 1 62
+R11
+31
+R12
+R13
+R14
+!i113 0
+R15
+R16
+vdecode
+R2
+R3
+R4
+R5
+R6
+R7
+r1
+!s85 0
+!i10b 1
+!s100 @@;CeFC<7;L<EQBG]NjhE3
+I;OTIZ1QJ?EbBI5MMkMLK<1
+R8
+S1
+R1
+R9
+8decode.sv
+Z21 Fdecode.sv
+!i122 0
+L0 6 184
+R11
+31
+R12
+R13
+R14
+!i113 0
+R15
+R16
+Xdesign_sv_unit
+R2
+R3
+R4
+R6
+VTB`7kUHbIUR;EX<RihOCm2
+r1
+!s85 0
+!i10b 1
+!s100 `0J6I4ZzzJhP@Y45n;8;I2
+ITB`7kUHbIUR;EX<RihOCm2
+!i103 1
+S1
+R1
+R9
+Z22 8design.sv
+Z23 Fdesign.sv
+Z24 Fpipeline_types.sv
+Z25 FiCache.sv
+Z26 Ffetch.sv
+R21
+Z27 Fphysical_reg_file.sv
+R10
+Z28 Flsu.sv
+R17
+Z29 Fpriority_decoder.sv
+Z30 Frob.sv
+Z31 Frename.sv
+R19
+Z32 Fdispatch.sv
+R18
+Z33 8testbench.sv
+Z34 Ftestbench.sv
+!i122 0
+L0 4 0
+R11
+31
+R12
+R13
+R14
+!i113 0
+R15
+R16
+vDispatch
+R2
+R3
+R4
+R5
+R6
+R7
+r1
+!s85 0
+!i10b 1
+!s100 9BSk6e<gjC0m>0mOmZ@Yg3
+IU[gla3XE@ZD=oHXcK[dS`1
+R8
+S1
+R1
+R9
+R32
+R30
+!i122 0
+L0 1 146
+R11
+31
+R12
+R13
+R14
+!i113 0
+R15
+R16
+n@dispatch
+vFetch
+R2
+R8
+R5
+R3
+R6
+!i10b 1
+!s100 `0PHgiVJl_0me``U=Y^Na3
+IfM>6B>Oo0;C^h006Ii<8h1
+S1
+R1
+R9
+8fetch.sv
+R26
+!i122 0
+L0 1 63
+R7
+R11
+r1
+!s85 0
+31
+R12
+R13
+R14
+!i113 0
+R15
+R16
+n@fetch
+viCache
+R2
+R8
+R5
+R3
+R6
+!i10b 1
+!s100 <3C`eQB_NlaWhl>EAL`1D3
+ILTcEg4T[FanIkPJo97:]S2
+S1
+R1
+R9
+8iCache.sv
+R25
+!i122 0
+L0 1 24
+R7
+R11
+r1
+!s85 0
+31
+R12
+R13
+R14
+!i113 0
+R15
+R16
+ni@cache
+vlsu_unit
+R2
+R3
+R4
+R5
+R6
+R7
+r1
+!s85 0
+!i10b 1
+!s100 ^[KZefo94JNbZG[N5;S7N3
+Ic`ZeLzh:B<WGFo3?J<jze1
+R8
+S1
+R1
+R9
+R28
+R10
+!i122 0
+L0 1 213
+R11
+31
+R12
+R13
+R14
+!i113 0
+R15
+R16
+vphysical_reg_file
+R2
+R3
+R4
+R5
+R6
+R7
+r1
+!s85 0
+!i10b 1
+!s100 88;0^LPfQVTIVeXzUZ^;R3
+IAejN2G_zdKGZENeVlf`Lc0
+R8
+S1
+R1
+R9
+R27
+R21
+!i122 0
+R20
+R11
+31
+R12
+R13
+R14
+!i113 0
+R15
+R16
+Xpipeline_types
+R2
+R3
+R6
+VleHl?TnfbjGLTR4Meb0^m2
+r1
+!s85 0
+!i10b 1
+!s100 j;3mGJTceJW^7iU24kzU^0
+IleHl?TnfbjGLTR4Meb0^m2
+S1
+R1
+R9
+R24
+R34
+!i122 0
+L0 1 0
+R11
+31
+R12
+R13
+R14
+!i113 0
+R15
+R16
+vpriority_decoder
+R2
+R3
+R4
+R5
+R6
+R7
+r1
+!s85 0
+!i10b 1
+!s100 ]XcJX_Y@OBHl_QTmdQFn@2
+IS5eFe:d0LG7bd<z`bhGeQ0
+R8
+S1
+R1
+R9
+8priority_decoder.sv
+R29
+!i122 0
+L0 3 28
+R11
+31
+R12
+R13
+R14
+!i113 0
+R15
+R16
+Tqrun_opt
+R6
+VzMNialKk<Ge^kI_8S]]6z1
+04 6 4 work Rename fast 0
+04 13 4 work tb_final_regs fast 0
+R0
+!s12f OEM100
+!s12b OEM100
+!s124 OEM100
+!s135 nogc
+o-access=rw+/. -timescale 1ns/1ns -mfcu +acc=npr -work qrun.out/work
+R16
+nqrun_opt
+OL;O;2024.3_1;79
+vRename
+R2
+R3
+R4
+R5
+R6
+R7
+r1
+!s85 0
+!i10b 1
+!s100 m38b[6_HAcZP9J:ll=nBS3
+I32iFP?Jo^L2mTJ7kL4a=53
+R8
+S1
+R1
+R9
+R31
+R30
+!i122 0
+L0 1 229
+R11
+31
+R12
+R13
+R14
+!i113 0
+R15
+R16
+n@rename
+vreservation_station
+R2
+R3
+R4
+R5
+R6
+R7
+r1
+!s85 0
+!i10b 1
+!s100 ?dTzi0^D6KGbh3L94f6DN1
+I_i[9TCV6_[iVD:>?[4NZa3
+R8
+S1
+R1
+R9
+Z35 8Reservation_Station.sv
+R19
+!i122 0
+L0 4 147
+R11
+31
+R12
+R13
+R14
+!i113 0
+R15
+R16
+vRISCV
+R2
+R3
+R4
+R5
+R6
+R7
+r1
+!s85 0
+!i10b 1
+!s100 Fh_Z0gACVjm<S9DA[>jK]2
+I1[@zfdN5RYjNBJ4]zR2510
+R8
+S1
+R1
+R9
+R22
+R23
+R35
+R19
+!i122 0
+L0 22 247
+R11
+31
+R12
+R13
+R14
+!i113 0
+R15
+R16
+n@r@i@s@c@v
+vrob
+R2
+R3
+R4
+R5
+R6
+R7
+r1
+!s85 0
+!i10b 1
+!s100 IWf6NfWm3CL5P=3EE?HhC2
+I@z0M^k:I_F@MV_N9`9?[X0
+R8
+S1
+R1
+R9
+8rob.sv
+R30
+!i122 0
+L0 4 153
+R11
+31
+R12
+R13
+R14
+!i113 0
+R15
+R16
+vtb_final_regs
+R2
+R3
+R4
+R5
+R6
+R7
+r1
+!s85 0
+!i10b 1
+!s100 P3e?1ZPL@KGklXCk2]OBU2
+IDebc;1T=N]Z0ZkUZ6[J9`1
+R8
+S1
+R1
+R9
+R33
+R34
+!i122 0
+L0 5 147
+R11
+31
+R12
+R13
+R14
+!i113 0
+R15
+R16

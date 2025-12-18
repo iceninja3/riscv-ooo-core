@@ -1,0 +1,8 @@
+BEGIN 1:physical_reg_file:fast:work
+    registers :  1:tb_final_regs:fast:work
+END 
+BEGIN 1:RISCV:fast:work
+    inst_reg :  1:tb_final_regs:fast:work
+    state :  1:tb_final_regs:fast:work
+    pc_reg :  1:tb_final_regs:fast:work
+END 

@@ -1,0 +1,241 @@
+QuestaSim-64 qrun 2024.3_1 Utility 2024.10 Oct 17 2024
+Start time: 02:13:52 on Dec 18,2025
+qrun -batch -access=rw+/. -timescale 1ns/1ns -mfcu design.sv testbench.sv -voptargs="+acc=npr" -do " run -all; exit" 
+Creating library 'qrun.out/work'.
+QuestaSim-64 vlog 2024.3_1 Compiler 2024.10 Oct 17 2024
+Start time: 02:13:52 on Dec 18,2025
+vlog -timescale 1ns/1ns -mfcu design.sv testbench.sv -work qrun.out/work -statslog qrun.out/stats_log -writesessionid "+qrun.out/top_dus" -csession=incr 
+-- Compiling package pipeline_types
+-- Compiling module iCache
+-- Compiling module Fetch
+-- Compiling package pipeline_types
+** Warning: ** while parsing file included at design.sv(5)
+** while parsing file included at decode.sv(2)
+** at pipeline_types.sv(1): (vlog-2275) Existing package 'pipeline_types' at line 1 will be overwritten.
+-- Compiling package pipeline_types
+** Warning: ** while parsing file included at design.sv(7)
+** while parsing file included at alu_unit.sv(1)
+** at pipeline_types.sv(1): (vlog-2275) Existing package 'pipeline_types' at line 1 will be overwritten.
+** Warning: ** while parsing file included at design.sv(11)
+** at rob.sv(17): (vlog-13314) Defaulting port 'dispatch_entry_i' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+** Warning: ** while parsing file included at design.sv(12)
+** at rename.sv(25): (vlog-13314) Defaulting port 'payload_i' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+** Warning: ** while parsing file included at design.sv(13)
+** at Reservation_Station.sv(14): (vlog-13314) Defaulting port 'write_data' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+** Warning: ** while parsing file included at design.sv(14)
+** at dispatch.sv(8): (vlog-13314) Defaulting port 'payload_i' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+-- Compiling module rob
+** Warning: ** while parsing file included at design.sv(16)
+** at rob.sv(4): (vlog-2275) Existing module 'rob' at line 4 will be overwritten.
+** Warning: ** while parsing file included at design.sv(16)
+** at rob.sv(17): (vlog-13314) Defaulting port 'dispatch_entry_i' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+-- Compiling module Dispatch
+** Warning: ** while parsing file included at design.sv(17)
+** at dispatch.sv(1): (vlog-2275) Existing module 'Dispatch' at line 1 will be overwritten.
+** Warning: ** while parsing file included at design.sv(17)
+** at dispatch.sv(8): (vlog-13314) Defaulting port 'payload_i' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+-- Compiling module reservation_station
+** Warning: ** while parsing file included at design.sv(18)
+** at Reservation_Station.sv(4): (vlog-2275) Existing module 'reservation_station' at line 4 will be overwritten.
+** Warning: ** while parsing file included at design.sv(18)
+** at Reservation_Station.sv(14): (vlog-13314) Defaulting port 'write_data' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+-- Compiling package pipeline_types
+** Warning: ** while parsing file included at testbench.sv(2)
+** at pipeline_types.sv(1): (vlog-2275) Existing package 'pipeline_types' at line 1 will be overwritten.
+-- Compiling package design_sv_unit
+-- Importing package pipeline_types
+-- Compiling module decode
+-- Compiling module physical_reg_file
+-- Compiling module alu_unit
+-- Compiling module lsu_unit
+-- Compiling module branch_unit
+-- Compiling module priority_decoder
+-- Compiling module Rename
+** Warning: rename.sv(25): (vlog-13314) Defaulting port 'payload_i' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+-- Compiling module btb
+-- Compiling module rob
+** Warning: rob.sv(17): (vlog-13314) Defaulting port 'dispatch_entry_i' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+-- Compiling module Dispatch
+** Warning: dispatch.sv(8): (vlog-13314) Defaulting port 'payload_i' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+-- Compiling module reservation_station
+** Warning: Reservation_Station.sv(14): (vlog-13314) Defaulting port 'write_data' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+-- Compiling module RISCV
+-- Compiling package pipeline_types
+-- Compiling module tb_final_regs
+** Warning: testbench.sv(93): (vlog-2880) Task "dump_final_regs" is being called in final procedure.
+
+Top level modules:
+	Rename
+	tb_final_regs
+End time: 02:13:53 on Dec 18,2025, Elapsed time: 0:00:01
+Errors: 0, Warnings: 18
+QuestaSim-64 vopt 2024.3_1 Compiler 2024.10 Oct 17 2024
+** Warning: (vopt-10587) Some optimizations are turned off because the +acc switch is in effect. This will cause your simulation to run slowly. Please use -access/-debug to maintain needed visibility. The +acc switch would be deprecated in a future release.
+Start time: 02:13:53 on Dec 18,2025
+vopt -access=rw+/. -timescale 1ns/1ns -mfcu "+acc=npr" -findtoplevels qrun.out/work+1+ -work qrun.out/work -statslog qrun.out/stats_log -csession=incr -o qrun_opt -csessionid=2 
+
+Top level modules:
+	Rename
+	tb_final_regs
+
+Analyzing design...
+-- Loading module Rename
+-- Loading module tb_final_regs
+-- Loading module RISCV
+-- Loading module btb
+-- Loading module iCache
+-- Loading module Fetch
+-- Loading module decode
+-- Loading module rob
+-- Loading module Dispatch
+-- Loading module reservation_station
+-- Loading module priority_decoder
+-- Loading module physical_reg_file
+-- Loading module alu_unit
+-- Loading module lsu_unit
+-- Loading module branch_unit
+Optimizing 17 design-units (inlining 0/16 module instances):
+-- Optimizing package pipeline_types(fast)
+-- Optimizing package design_sv_unit(fast)
+-- Optimizing module RISCV(fast)
+** Warning: design.sv(111): (vopt-2685) [TFMPC] - Too few port connections for 'u_fetch'.  Expected 13, found 10.
+** Warning: design.sv(111): (vopt-2718) [TFMPC] - Missing connection for port 'btb_pred_target_i'.
+** Warning: design.sv(111): (vopt-2718) [TFMPC] - Missing connection for port 'btb_pred_taken_i'.
+** Warning: design.sv(111): (vopt-2718) [TFMPC] - Missing connection for port 'btb_hit_i'.
+** Warning: design.sv(119): (vopt-2685) [TFMPC] - Too few port connections for 'u_decode'.  Expected 17, found 15.
+** Warning: design.sv(119): (vopt-2718) [TFMPC] - Missing connection for port 'rs2_valid'.
+** Warning: design.sv(119): (vopt-2718) [TFMPC] - Missing connection for port 'rs1_valid'.
+-- Optimizing module Rename(fast)
+** Warning: rename.sv(25): (vopt-13314) Defaulting port 'payload_i' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+-- Optimizing module reservation_station(fast)
+** Warning: Reservation_Station.sv(14): (vopt-13314) Defaulting port 'write_data' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+-- Optimizing module lsu_unit(fast)
+-- Optimizing module decode(fast)
+-- Optimizing module Dispatch(fast)
+** Warning: dispatch.sv(8): (vopt-13314) Defaulting port 'payload_i' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+-- Optimizing module rob(fast)
+** Warning: rob.sv(17): (vopt-13314) Defaulting port 'dispatch_entry_i' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+-- Optimizing module btb(fast)
+-- Optimizing module tb_final_regs(fast)
+** Warning: testbench.sv(23): (vopt-2685) [TFMPC] - Too few port connections for 'dut'.  Expected 17, found 2.
+** Warning: testbench.sv(23): (vopt-2718) [TFMPC] - Missing connection for port 'fe_MemToReg_o'.
+** Warning: testbench.sv(23): (vopt-2718) [TFMPC] - Missing connection for port 'fe_RegWrite_o'.
+** Warning: testbench.sv(23): (vopt-2718) [TFMPC] - Missing connection for port 'fe_MemWrite_o'.
+** Warning: testbench.sv(23): (vopt-2718) [TFMPC] - Missing connection for port 'fe_MemRead_o'.
+** Warning: testbench.sv(23): (vopt-2718) [TFMPC] - Missing connection for port 'fe_jump_o'.
+** Warning: testbench.sv(23): (vopt-2718) [TFMPC] - Missing connection for port 'fe_branch_o'.
+** Warning: testbench.sv(23): (vopt-2718) [TFMPC] - Missing connection for port 'fe_ALUOp_o'.
+** Warning: testbench.sv(23): (vopt-2718) [TFMPC] - Missing connection for port 'fe_ALUSrc_o'.
+** Warning: testbench.sv(23): (vopt-2718) [TFMPC] - Missing connection for port 'fe_imm_o'.
+** Warning: testbench.sv(23): (vopt-2718) [TFMPC] - Missing connection for port 'fe_rd_o'.
+** Warning: testbench.sv(23): (vopt-2718) [TFMPC] - Missing connection for port 'fe_rs2_o'.
+** Warning: testbench.sv(23): (vopt-2718) [TFMPC] - Missing connection for port 'fe_rs1_o'.
+** Warning: testbench.sv(23): (vopt-2718) [TFMPC] - Missing connection for port 'fe_pc_o'.
+** Warning: testbench.sv(23): (vopt-2718) [TFMPC] - Missing connection for port 'fe_ready_i'.
+** Warning: testbench.sv(23): (vopt-2718) [TFMPC] - Missing connection for port 'fe_valid_o'.
+** Warning: testbench.sv(93): (vopt-2880) Task "dump_final_regs" is being called in final procedure.
+-- Optimizing module physical_reg_file(fast)
+-- Optimizing module branch_unit(fast)
+-- Optimizing module alu_unit(fast)
+-- Optimizing module Fetch(fast)
+-- Optimizing module priority_decoder(fast)
+-- Optimizing module iCache(fast)
+Optimized design name is qrun_opt
+End time: 02:13:53 on Dec 18,2025, Elapsed time: 0:00:00
+Errors: 0, Warnings: 29
+# vsim -batch -lib qrun.out/work -do " run -all; exit" -statslog qrun.out/stats_log qrun_opt -appendlog -l qrun.log 
+# Start time: 02:13:53 on Dec 18,2025
+# //  Questa Sim-64
+# //  Version 2024.3_1 linux_x86_64 Oct 17 2024
+# //
+# // Unpublished work. Copyright 2024 Siemens
+# //
+# // This material contains trade secrets or otherwise confidential information
+# // owned by Siemens Industry Software Inc. or its affiliates (collectively,
+# // "SISW"), or its licensors. Access to and use of this information is strictly
+# // limited as set forth in the Customer's applicable agreements with SISW.
+# //
+# // This material may not be copied, distributed, or otherwise disclosed outside
+# // of the Customer's facilities without the express written permission of SISW,
+# // and may not be used in any way not expressly authorized by SISW.
+# //
+# Loading sv_std.std
+# Loading work.pipeline_types(fast)
+# Loading work.design_sv_unit(fast)
+# Loading work.Rename(fast)
+# Loading work.tb_final_regs(fast)
+# Loading work.RISCV(fast)
+# Loading work.btb(fast)
+# Loading work.iCache(fast)
+# Loading work.Fetch(fast)
+# Loading work.decode(fast)
+# Loading work.rob(fast)
+# Loading work.Dispatch(fast)
+# Loading work.reservation_station(fast)
+# Loading work.priority_decoder(fast)
+# Loading work.physical_reg_file(fast)
+# Loading work.alu_unit(fast)
+# Loading work.lsu_unit(fast)
+# Loading work.branch_unit(fast)
+# ** Warning: (vsim-3015) [PCDPC] - Port size (32) does not match connection size (1) for port 'fetch_pc_i'. The port definition is at: btb.sv(5).
+#    Time: 0 ps  Iteration: 0  Instance: /tb_final_regs/dut/u_btb File: design.sv Line: 92
+# ** Warning: (vsim-3015) [PCDPC] - Port size (32) does not match connection size (1) for port 'pred_target_o'. The port definition is at: btb.sv(7).
+#    Time: 0 ps  Iteration: 0  Instance: /tb_final_regs/dut/u_btb File: design.sv Line: 92
+# 
+# run -all
+# ===== Starting FINAL-REGS In-Order testbench =====
+# Reset de-asserted at cycle 4
+# ERROR: Timed out after 200000 cycles.
+# ** Note: $finish    : testbench.sv(148)
+#    Time: 1999995 ns  Iteration: 1  Instance: /tb_final_regs
+# 
+# ===== FINAL ARCH REGISTER DUMP =====
+# Reason: final block (sim ending)
+# Program Finished: 199992 cycles (after reset)
+# Total Sim Time:   1999995000
+# -------------------------------------
+# Reg | Actual       | Expected     | Status
+# ----+-------------+-------------+---------
+# x0 | 0x00000000 | 0x00000000 | OK
+# x1 | 0x00000890 | (n/a)       | no-exp
+# x2 | 0x00000000 | (n/a)       | no-exp
+# x3 | 0x00000000 | (n/a)       | no-exp
+# x4 | 0x00000000 | (n/a)       | no-exp
+# x5 | 0xffffff9c | (n/a)       | no-exp
+# x6 | 0xffffffff | (n/a)       | no-exp
+# x7 | 0xfffffbce | (n/a)       | no-exp
+# x8 | 0x00010040 | (n/a)       | no-exp
+# x9 | 0x0001ffe0 | (n/a)       | no-exp
+# x10| 0x00000003 | (n/a)       | no-exp
+# x11| 0x00000001 | (n/a)       | no-exp
+# x12| 0x00000000 | (n/a)       | no-exp
+# x13| 0x00000000 | (n/a)       | no-exp
+# x14| 0x00000000 | (n/a)       | no-exp
+# x15| 0x00000000 | (n/a)       | no-exp
+# x16| 0x00000000 | (n/a)       | no-exp
+# x17| 0x00000000 | (n/a)       | no-exp
+# x18| 0x00000000 | (n/a)       | no-exp
+# x19| 0x00000000 | (n/a)       | no-exp
+# x20| 0x00000001 | (n/a)       | no-exp
+# x21| 0x00000000 | (n/a)       | no-exp
+# x22| 0x00000000 | (n/a)       | no-exp
+# x23| 0x0000001f | (n/a)       | no-exp
+# x24| 0x00000001 | (n/a)       | no-exp
+# x25| 0x00000000 | (n/a)       | no-exp
+# x26| 0x00000000 | (n/a)       | no-exp
+# x27| 0x00000000 | (n/a)       | no-exp
+# x28| 0x00000000 | (n/a)       | no-exp
+# x29| 0x000001c4 | (n/a)       | no-exp
+# x30| 0x00000001 | (n/a)       | no-exp
+# x31| 0x00000001 | (n/a)       | no-exp
+# =====================================
+# 
+# End time: 02:13:54 on Dec 18,2025, Elapsed time: 0:00:01
+# Errors: 0, Warnings: 2
+End time: 02:13:54 on Dec 18,2025, Elapsed time: 0:00:02
+*** Summary *********************************************
+    qrun: Errors:   0, Warnings:   0
+    vlog: Errors:   0, Warnings:  18
+    vopt: Errors:   0, Warnings:  29
+    vsim: Errors:   0, Warnings:   2
+  Totals: Errors:   0, Warnings:  49
