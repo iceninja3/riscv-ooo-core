@@ -81,55 +81,52 @@ module tb_final_regs;
 initial begin
     $display("===== Starting FINAL-REGS In-Order testbench =====");
 
-    // Reset Sequence
+    // 1. Reset Sequence
     reset = 1;
-    repeat (RESET_CYCLES) @(posedge clk);
-    reset = 0;
-
-    cycles    = 0;
+    cycles = 0;
     quiet_ctr = 0;
     completion_cycle = 0;
 
+    repeat (RESET_CYCLES) @(posedge clk) cycles++; 
+    
+    @(negedge clk);
+    reset = 0;
+
+    // 2. Main Execution Loop
     while (cycles < MAX_CYCLES) begin
       @(posedge clk);
-      cycles++;
+      cycles++; 
 
-      // 1. MONITOR ACTIVITY
+      // MONITOR ACTIVITY
       if (dut.state == 3'd4) begin // S_WRITEBACK
          quiet_ctr = 0;
-         completion_cycle = cycles;
+         // Actual execution cycles (Simulation Time - Reset Time)
+         completion_cycle = cycles - RESET_CYCLES; 
       end else begin
          quiet_ctr++;
       end
 
-      // 2. STOP IF WE HIT GARBAGE MEMORY (The "Runaway" Fix)
-      // If the instruction is 'x', we've run off the end of program.hex
-      if (dut.inst_reg === 32'hxxxxxxxx && cycles > 1000) begin
-        $display("Detected uninitialized memory at PC=%h. Ending simulation.", dut.pc_reg);
-        dump_final_regs("Program End (Memory Limit)");
-        $finish;
-      end
-
-      // 3. STOP IF WE REACH THE LOGICAL END OF JSWR (PC 0xDC)
-      // According to 25jswr.txt, the last instruction is at 0xdc.
-      if (dut.pc_reg == 32'h000000dc && dut.state == 3'd4) begin
-        $display("Reached final instruction of trace at PC=0xDC.");
-        dump_final_regs("Success: Trace Complete");
-        $finish;
+      // 3. ENHANCED DEBUG: Detect Infinite Loops or End of Program
+      // If we see the same PC for many cycles in Writeback, or hit X
+      if (cycles > 1000) begin
+        if (dut.inst_reg === 32'hxxxxxxxx) begin
+           $display("ABORT: Hit uninitialized memory (X) at PC=%h", dut.pc_reg);
+           dump_final_regs("Memory Limit");
+           $finish;
+        end
       end
 
       // 4. STOP IF QUIESCENT
       if (quiet_ctr >= QUIET_CYCLES) begin
-        $display("Reached quiescent state (No Writeback for %0d cycles)", QUIET_CYCLES);
-        dump_final_regs("Success: Quiescent");
+        $display("Reached quiescent state (No activity for %0d cycles)", QUIET_CYCLES);
+        dump_final_regs("Success: Quiescent"); 
         $finish;
       end
     end
 
-    // Timeout Path
-    $display("WARNING: timed out after %0d cycles.", MAX_CYCLES);
+    // 5. Timeout Path
+    $display("ERROR: Timed out after %0d cycles. CPU was last active at cycle %0d.", MAX_CYCLES, completion_cycle);
     dump_final_regs("TIMEOUT");
     $finish;
-  end
-
+end
 endmodule
